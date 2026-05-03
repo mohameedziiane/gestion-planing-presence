@@ -183,7 +183,7 @@ async function fetchProtectedRows(url: string, token: string) {
   return Array.isArray(data) ? data : [];
 }
 
-function DetailCard({
+function SummaryItem({
   label,
   value,
 }: {
@@ -191,11 +191,11 @@ function DetailCard({
   value: string | number;
 }) {
   return (
-    <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
+    <article className="border-b border-[rgba(172,189,197,0.15)] p-4 sm:border-r lg:[&:nth-child(3)]:border-r-0 lg:[&:nth-last-child(-n+2)]:border-b-0">
       <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
         {label}
       </p>
-      <p className="mt-2 text-lg font-semibold text-[#e1e3e4]">{value}</p>
+      <p className="mt-2 text-xl font-semibold text-[#e1e3e4]">{value}</p>
     </article>
   );
 }
@@ -389,38 +389,96 @@ export default function AdminPage() {
       </header>
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
-        <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
-          <div>
-            <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
-              Tableau de bord Admin
-            </h1>
-            <p className="mt-2 text-sm text-[#acbdc5]">
-              Planning et repos du jour sélectionné.
-            </p>
-          </div>
-
-          <label className="flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
-            Date
-            <select
-              value={selectedDay}
-              onChange={(event) => setSelectedDay(event.target.value as DayOption)}
-              className="h-10 min-w-44 border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-3 text-sm font-semibold text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
-            >
-              {dayOptions.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
+        <div className="mb-6">
+          <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
+            Tableau de bord Admin
+          </h1>
+          <p className="mt-2 text-sm text-[#acbdc5]">
+            Planning et repos du jour sélectionné.
+          </p>
         </div>
 
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
-          <DetailCard label="Date sélectionnée" value={selectedDate} />
-          <DetailCard label="Groupe Matin" value={morningGroup} />
-          <DetailCard label="Groupe Soir" value={eveningGroup} />
-          <DetailCard label="Employé Nuit" value={nightEmployee} />
-          <DetailCard label="Nombre repos" value={reposRows.length} />
+        <div className="mb-8 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+          <section>
+            <label className="mb-3 flex w-fit flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+              Date
+              <select
+                value={selectedDay}
+                onChange={(event) => setSelectedDay(event.target.value as DayOption)}
+                className="h-10 min-w-44 border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-3 text-sm font-semibold text-[#e1e3e4] outline-none transition hover:border-[#169CDC] focus:border-[#1AB6FF]"
+              >
+                {dayOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="border border-[rgba(172,189,197,0.15)] bg-[#38474e]">
+              <div className="border-b border-[rgba(172,189,197,0.15)] px-4 py-3">
+                <h2 className="text-base font-semibold text-[#e1e3e4]">
+                  Vue d'ensemble
+                </h2>
+                <p className="text-sm text-[#acbdc5]">
+                  Situation opérationnelle du jour
+                </p>
+              </div>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3">
+                <SummaryItem label="Date sélectionnée" value={selectedDate} />
+                <SummaryItem label="Groupe Matin" value={morningGroup} />
+                <SummaryItem label="Groupe Soir" value={eveningGroup} />
+                <SummaryItem label="Employé Nuit" value={nightEmployee} />
+                <SummaryItem label="Nombre repos" value={reposRows.length} />
+              </div>
+            </div>
+          </section>
+
+          <aside className="border border-l-4 border-[rgba(172,189,197,0.15)] border-l-[#1AB6FF] bg-[#38474e] p-4 sm:p-5 lg:mt-[80px]">
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <h2 className="text-xl font-semibold text-[#e1e3e4]">
+                  Repos du jour
+                </h2>
+                <p className="mt-1 text-sm text-[#acbdc5]">
+                  {reposRows.length} employé(s)
+                </p>
+              </div>
+              <span className="border border-[rgba(172,189,197,0.15)] px-2 py-1 text-xs font-semibold text-[#1AB6FF]">
+                {selectedDate}
+              </span>
+            </div>
+
+            {isLoading ? (
+              <p className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-4 text-sm text-[#acbdc5]">
+                Chargement...
+              </p>
+            ) : error ? (
+              <p className="border border-red-300/30 bg-red-500/10 px-3 py-4 text-sm text-red-100">
+                {error}
+              </p>
+            ) : reposRows.length === 0 ? (
+              <p className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-4 text-sm text-[#acbdc5]">
+                Aucun repos trouvé pour cette date.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                {reposRows.map((row, index) => (
+                  <article
+                    key={row.id || `repos-${index}`}
+                    className="border border-[rgba(172,189,197,0.15)] bg-[#334149] p-3"
+                  >
+                    <h3 className="text-sm font-semibold text-[#e1e3e4]">
+                      {getEmployeeName(row) || "Employé non défini"}
+                    </h3>
+                    <p className="mt-1 text-sm text-[#acbdc5]">
+                      Type: {getReposType(row)}
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </aside>
         </div>
 
         {isLoading ? (
@@ -432,65 +490,30 @@ export default function AdminPage() {
             {error}
           </p>
         ) : (
-          <div className="space-y-6">
-            <section id="planning">
-              <div className="mb-4">
-                <h2 className="text-xl font-semibold text-[#e1e3e4]">
-                  Planning
-                </h2>
-                <p className="text-sm text-[#acbdc5]">{selectedDate}</p>
+          <section id="planning">
+            <div className="mb-4">
+              <h2 className="text-xl font-semibold text-[#e1e3e4]">
+                Planning
+              </h2>
+              <p className="text-sm text-[#acbdc5]">{selectedDate}</p>
+            </div>
+
+            {planningRows.length === 0 ? (
+              <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+                Aucun planning trouvé pour cette date.
+              </p>
+            ) : (
+              <div className="grid gap-4 lg:grid-cols-3">
+                {shifts.map((shift) => (
+                  <PlanningSection
+                    key={shift}
+                    shift={shift}
+                    rows={rowsByShift[shift]}
+                  />
+                ))}
               </div>
-
-              {planningRows.length === 0 ? (
-                <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
-                  Aucun planning trouvé pour cette date.
-                </p>
-              ) : (
-                <div className="grid gap-4 lg:grid-cols-3">
-                  {shifts.map((shift) => (
-                    <PlanningSection
-                      key={shift}
-                      shift={shift}
-                      rows={rowsByShift[shift]}
-                    />
-                  ))}
-                </div>
-              )}
-            </section>
-
-            <section className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 sm:p-5">
-              <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                <h2 className="text-xl font-semibold text-[#e1e3e4]">
-                  Repos du jour
-                </h2>
-                <p className="text-sm text-[#acbdc5]">
-                  {reposRows.length} employé(s)
-                </p>
-              </div>
-
-              {reposRows.length === 0 ? (
-                <p className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-4 py-5 text-sm text-[#acbdc5]">
-                  Aucun repos trouvé pour cette date.
-                </p>
-              ) : (
-                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                  {reposRows.map((row, index) => (
-                    <article
-                      key={row.id || `repos-${index}`}
-                      className="border border-[rgba(172,189,197,0.15)] bg-[#334149] p-3"
-                    >
-                      <h3 className="text-sm font-semibold text-[#e1e3e4]">
-                        {getEmployeeName(row) || "Employé non défini"}
-                      </h3>
-                      <p className="mt-1 text-sm text-[#acbdc5]">
-                        Type: {getReposType(row)}
-                      </p>
-                    </article>
-                  ))}
-                </div>
-              )}
-            </section>
-          </div>
+            )}
+          </section>
         )}
       </section>
     </main>
