@@ -44,6 +44,8 @@ class PlanningGenerationError extends Error {
 const NIGHT_SHIFT_ANCHOR_DATE = "2026-05-01";
 const NIGHT_SHIFT_BLOCK_LENGTH_DAYS = 7;
 const NIGHT_SHIFT_ORDER = ["SABER", "AYOUB", "YOUNESS"];
+const PLANNING_WEEK_ANCHOR_DATE = "2026-05-04";
+const MILLISECONDS_PER_DAY = 86400000;
 const GROUP_A_FIXED_CONTROL_NAME = "MONCEF";
 const GROUP_B_FIXED_CONTROL_NAME = "SAID";
 
@@ -91,6 +93,13 @@ function isMonday(dateString) {
 
 function getWeekDates(startDate) {
   return Array.from({ length: 7 }, (_, index) => addDays(startDate, index));
+}
+
+function getDaysDifference(startDate, endDate) {
+  return Math.floor(
+    (parseUtcDate(endDate).getTime() - parseUtcDate(startDate).getTime()) /
+      MILLISECONDS_PER_DAY
+  );
 }
 
 function normalizeText(value) {
@@ -248,6 +257,19 @@ function getRotationType(weekNumber) {
   return ((weekNumber - 1) % 2) + 1;
 }
 
+function getPlanningWeekNumber(startDate) {
+  const daysDiff = getDaysDifference(PLANNING_WEEK_ANCHOR_DATE, startDate);
+
+  if (daysDiff < 0) {
+    throw new PlanningGenerationError(
+      400,
+      `startDate must be on or after planning cycle anchor date ${PLANNING_WEEK_ANCHOR_DATE}.`
+    );
+  }
+
+  return Math.floor(daysDiff / 7) + 1;
+}
+
 function getRestDaysTarget(employee, weekNumber) {
   return (employee.id + weekNumber) % 2 === 0 ? 2 : 1;
 }
@@ -377,11 +399,7 @@ function buildNightAssignments(weekDates, nightCandidates) {
 
   return new Map(
     weekDates.map((date) => {
-      const daysSinceAnchor = Math.floor(
-        (parseUtcDate(date).getTime() -
-          parseUtcDate(NIGHT_SHIFT_ANCHOR_DATE).getTime()) /
-          86400000
-      );
+      const daysSinceAnchor = getDaysDifference(NIGHT_SHIFT_ANCHOR_DATE, date);
       const blockIndex = Math.floor(
         daysSinceAnchor / NIGHT_SHIFT_BLOCK_LENGTH_DAYS
       );
@@ -394,11 +412,7 @@ function buildNightAssignments(weekDates, nightCandidates) {
 }
 
 function getNightBlockIndexForDate(date) {
-  const daysSinceAnchor = Math.floor(
-    (parseUtcDate(date).getTime() -
-      parseUtcDate(NIGHT_SHIFT_ANCHOR_DATE).getTime()) /
-      86400000
-  );
+  const daysSinceAnchor = getDaysDifference(NIGHT_SHIFT_ANCHOR_DATE, date);
 
   return Math.floor(daysSinceAnchor / NIGHT_SHIFT_BLOCK_LENGTH_DAYS);
 }
@@ -580,6 +594,24 @@ function buildRestAssignmentsForGroup({
     return Math.max(groupEmployees.length - 3 - nightCount, 0);
   }
 
+  function reserveControlReplacementForRest(employee, date) {
+    if (!fixedController || Number(employee.id) !== Number(fixedController.id)) {
+      return;
+    }
+
+    const replacement = findControlReplacement({
+      group,
+      groupEmployees,
+      fixedController,
+      nightEmployee: getNightEmployeeForDate(date),
+      restEmployeeIds: new Set(dailyRestAssignments.get(date)),
+    });
+
+    if (replacement) {
+      reservedControlReplacementByDate.set(date, replacement.id);
+    }
+  }
+
   function canAssignRest(employee, date) {
     const assignedRestDates = employeeRestDates.get(employee.id);
     const dailyAssignedEmployees = dailyRestAssignments.get(date);
@@ -651,6 +683,132 @@ function buildRestAssignmentsForGroup({
     return true;
   }
 
+  function assignRest(employee, date, type) {
+    dailyRestAssignments.get(date).push(employee.id);
+    employeeRestDates.get(employee.id).push(date);
+    reposTypeByEmployeeDate.set(`${employee.id}|${date}`, type);
+    reserveControlReplacementForRest(employee, date);
+  }
+
+  function ensureRestOnDate(employee, date, type) {
+    if (employeeRestDates.get(employee.id).includes(date)) {
+      return true;
+    }
+
+    if (!canAssignRest(employee, date)) {
+      return false;
+    }
+
+    assignRest(employee, date, type);
+
+    return true;
+  }
+
+  function snapshotRestState() {
+    return {
+      dailyRestAssignments: new Map(
+        [...dailyRestAssignments.entries()].map(([date, employeeIds]) => [
+          date,
+          [...employeeIds],
+        ])
+      ),
+      employeeRestDates: new Map(
+        [...employeeRestDates.entries()].map(([employeeId, dates]) => [
+          employeeId,
+          [...dates],
+        ])
+      ),
+      reposTypeByEmployeeDate: new Map(reposTypeByEmployeeDate),
+      reservedControlReplacementByDate: new Map(reservedControlReplacementByDate),
+    };
+  }
+
+  function restoreRestState(snapshot) {
+    dailyRestAssignments.clear();
+    snapshot.dailyRestAssignments.forEach((employeeIds, date) => {
+      dailyRestAssignments.set(date, employeeIds);
+    });
+
+    employeeRestDates.clear();
+    snapshot.employeeRestDates.forEach((dates, employeeId) => {
+      employeeRestDates.set(employeeId, dates);
+    });
+
+    reposTypeByEmployeeDate.clear();
+    snapshot.reposTypeByEmployeeDate.forEach((type, key) => {
+      reposTypeByEmployeeDate.set(key, type);
+    });
+
+    reservedControlReplacementByDate.clear();
+    snapshot.reservedControlReplacementByDate.forEach((employeeId, date) => {
+      reservedControlReplacementByDate.set(date, employeeId);
+    });
+  }
+
+  function tryAssignConsecutiveRestPair(employee, dates) {
+    const snapshot = snapshotRestState();
+    const [firstDate, secondDate] = dates;
+
+    if (
+      ensureRestOnDate(employee, firstDate, "2j") &&
+      ensureRestOnDate(employee, secondDate, "2j")
+    ) {
+      return true;
+    }
+
+    restoreRestState(snapshot);
+
+    return false;
+  }
+
+  function getConsecutiveDatePairs() {
+    return weekDates.slice(0, -1).map((date, index) => [
+      date,
+      weekDates[index + 1],
+    ]);
+  }
+
+  function getAdjacentPairsForDate(date) {
+    const index = weekDates.indexOf(date);
+    const pairs = [];
+
+    if (index > 0) {
+      pairs.push([weekDates[index - 1], date]);
+    }
+
+    if (index >= 0 && index < weekDates.length - 1) {
+      pairs.push([date, weekDates[index + 1]]);
+    }
+
+    return pairs;
+  }
+
+  function orderPairsByLoad(pairs, seed) {
+    const rotatedPairs = rotateArray(pairs, seed % Math.max(pairs.length, 1));
+
+    return [...rotatedPairs].sort((left, right) => {
+      const leftLoad =
+        dailyRestAssignments.get(left[0]).length +
+        dailyRestAssignments.get(left[1]).length;
+      const rightLoad =
+        dailyRestAssignments.get(right[0]).length +
+        dailyRestAssignments.get(right[1]).length;
+
+      return leftLoad - rightLoad;
+    });
+  }
+
+  for (const date of weekDates) {
+    const dailyAssignedEmployees = dailyRestAssignments.get(date);
+
+    if (
+      fixedController &&
+      dailyAssignedEmployees.includes(fixedController.id)
+    ) {
+      reserveControlReplacementForRest(fixedController, date);
+    }
+  }
+
   const employeesByPriority = [...groupEmployees].sort((left, right) => {
     const targetDifference = restTargets.get(right.id) - restTargets.get(left.id);
 
@@ -664,6 +822,42 @@ function buildRestAssignmentsForGroup({
   for (const employee of employeesByPriority) {
     const dateSeed = weekNumber + employee.id;
     const rotatedDates = rotateArray(weekDates, dateSeed % weekDates.length);
+    const target = restTargets.get(employee.id);
+
+    if (target === 2) {
+      const currentRestDates = employeeRestDates.get(employee.id);
+      let assignedConsecutivePair = false;
+
+      if (currentRestDates.length >= 2) {
+        assignedConsecutivePair = currentRestDates
+          .sort()
+          .some((date, index, dates) => dates[index + 1] === addDays(date, 1));
+      } else if (currentRestDates.length === 1) {
+        const adjacentPairs = orderPairsByLoad(
+          getAdjacentPairsForDate(currentRestDates[0]),
+          dateSeed
+        );
+
+        assignedConsecutivePair = adjacentPairs.some((pair) =>
+          tryAssignConsecutiveRestPair(employee, pair)
+        );
+      } else {
+        assignedConsecutivePair = orderPairsByLoad(
+          getConsecutiveDatePairs(),
+          dateSeed
+        ).some((pair) => tryAssignConsecutiveRestPair(employee, pair));
+      }
+
+      if (!assignedConsecutivePair) {
+        addWarning(
+          warnings,
+          `Unable to assign 2 consecutive repos days to ${employee.prenom} ${employee.nom} in ${group.nom} safely.`
+        );
+      }
+
+      continue;
+    }
+
     const rotatedDateIndex = new Map(
       rotatedDates.map((date, index) => [date, index])
     );
@@ -683,33 +877,11 @@ function buildRestAssignmentsForGroup({
         continue;
       }
 
-      dailyRestAssignments.get(date).push(employee.id);
-      employeeRestDates.get(employee.id).push(date);
-      reposTypeByEmployeeDate.set(
-        `${employee.id}|${date}`,
-        restTargets.get(employee.id) === 2 ? "2j" : "1j"
-      );
-
-      if (Number(employee.id) === Number(fixedController.id)) {
-        const replacement = findControlReplacement({
-          group,
-          groupEmployees,
-          fixedController,
-          nightEmployee: getNightEmployeeForDate(date),
-          restEmployeeIds: new Set(dailyRestAssignments.get(date)),
-        });
-
-        if (replacement) {
-          reservedControlReplacementByDate.set(date, replacement.id);
-        }
-      }
-
-      if (employeeRestDates.get(employee.id).length >= restTargets.get(employee.id)) {
-        break;
-      }
+      assignRest(employee, date, "1j");
+      break;
     }
 
-    if (employeeRestDates.get(employee.id).length < restTargets.get(employee.id)) {
+    if (employeeRestDates.get(employee.id).length < target) {
       addWarning(
         warnings,
         `Unable to assign all requested repos days to ${employee.prenom} ${employee.nom} in ${group.nom}.`
@@ -1112,7 +1284,6 @@ async function fetchGeneratedRepos(connection, startDate, endDate) {
 
 async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false }) {
   const normalizedStartDate = String(startDate || "").trim();
-  const parsedWeekNumber = parsePositiveInt(weekNumber);
 
   if (!normalizedStartDate) {
     throw new PlanningGenerationError(400, "startDate is required");
@@ -1129,11 +1300,24 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
     throw new PlanningGenerationError(400, "startDate must be a Monday");
   }
 
-  if (!parsedWeekNumber) {
-    throw new PlanningGenerationError(
-      400,
-      "weekNumber must be a valid positive integer"
-    );
+  const derivedWeekNumber = getPlanningWeekNumber(normalizedStartDate);
+
+  if (weekNumber !== undefined) {
+    const parsedWeekNumber = parsePositiveInt(weekNumber);
+
+    if (!parsedWeekNumber) {
+      throw new PlanningGenerationError(
+        400,
+        "weekNumber must be a valid positive integer"
+      );
+    }
+
+    if (parsedWeekNumber !== derivedWeekNumber) {
+      throw new PlanningGenerationError(
+        400,
+        `Invalid weekNumber. For startDate ${normalizedStartDate}, expected weekNumber is ${derivedWeekNumber}.`
+      );
+    }
   }
 
   if (overwrite !== undefined && typeof overwrite !== "boolean") {
@@ -1145,7 +1329,7 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
 
   const endDate = addDays(normalizedStartDate, 6);
   const weekDates = getWeekDates(normalizedStartDate);
-  const rotationType = getRotationType(parsedWeekNumber);
+  const rotationType = getRotationType(derivedWeekNumber);
   const warnings = [];
   const connection = await db.getConnection();
 
@@ -1285,7 +1469,7 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
         group,
         groupEmployees,
         weekDates,
-        weekNumber: parsedWeekNumber,
+        weekNumber: derivedWeekNumber,
         nightAssignmentsByDate,
         preassignedReposRows: nightBoundaryReposByGroupId[group.id] || [],
         warnings,
@@ -1304,7 +1488,7 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
       groups: [groupA, groupB],
       employeesByGroupId,
       weekDates,
-      weekNumber: parsedWeekNumber,
+      weekNumber: derivedWeekNumber,
       activePeriodsByGroupId,
       roleIds: {
         controle: controle.id,
@@ -1399,6 +1583,7 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
       week: {
         startDate: normalizedStartDate,
         endDate,
+        weekNumber: derivedWeekNumber,
       },
       planning,
       repos,
