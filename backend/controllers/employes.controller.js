@@ -1,4 +1,8 @@
 const db = require("../config/db");
+const {
+  PlanningGenerationError,
+  validateEmployeePlanningConfig,
+} = require("../services/planningGeneration.service");
 
 const baseEmployeSelect = `
   SELECT
@@ -10,6 +14,10 @@ const baseEmployeSelect = `
     g.nom AS groupe,
     e.controle_fixe,
     COALESCE(e.travail_nuit_autorise, 0) AS travail_nuit_autorise,
+    e.actif,
+    e.repos_base_target,
+    e.ordre_nuit,
+    e.controle_periode,
     e.utilisateur_id
   FROM employes e
   JOIN groupes g ON e.groupe_id = g.id
@@ -71,6 +79,64 @@ function normalizeTravailNuitAutorise(value, fallbackValue = 0) {
   }
 
   return null;
+}
+
+function normalizeActif(value, fallbackValue = 1) {
+  if (value === undefined) {
+    return fallbackValue;
+  }
+
+  if (value === true || value === 1 || value === "1") {
+    return 1;
+  }
+
+  if (value === false || value === 0 || value === "0") {
+    return 0;
+  }
+
+  return null;
+}
+
+function normalizeOptionalOrdreNuit(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const ordreNuit = Number(value);
+
+  if (!Number.isInteger(ordreNuit) || ordreNuit <= 0) {
+    return null;
+  }
+
+  return ordreNuit;
+}
+
+function normalizeOptionalControlePeriode(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const controlePeriode = String(value).trim();
+
+  if (controlePeriode === "Matin" || controlePeriode === "Soir") {
+    return controlePeriode;
+  }
+
+  return "__INVALID__";
+}
+
+function normalizeReposBaseTarget(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const reposBaseTarget = String(value).trim();
+
+  if (reposBaseTarget === "1j" || reposBaseTarget === "2j") {
+    return reposBaseTarget;
+  }
+
+  return "__INVALID__";
 }
 
 function validateEmployePayload(payload) {
@@ -139,16 +205,154 @@ function validateEmployePayload(payload) {
   };
 }
 
-async function groupeExists(groupeId) {
-  const [rows] = await db.query("SELECT id FROM groupes WHERE id = ? LIMIT 1", [
+function validateEmployePlanningConfigUpdatePayload(payload, existingEmploye) {
+  const errors = [];
+  const nextValue = {
+    sexe:
+      payload.sexe === undefined
+        ? existingEmploye.sexe
+        : String(payload.sexe || "").trim(),
+    groupe_id:
+      payload.groupe_id === undefined
+        ? Number(existingEmploye.groupe_id)
+        : Number(payload.groupe_id),
+    actif: normalizeActif(payload.actif, Number(existingEmploye.actif)),
+    repos_base_target:
+      payload.repos_base_target === undefined
+        ? existingEmploye.repos_base_target
+        : normalizeReposBaseTarget(payload.repos_base_target),
+    travail_nuit_autorise: normalizeTravailNuitAutorise(
+      payload.travail_nuit_autorise,
+      Number(existingEmploye.travail_nuit_autorise)
+    ),
+    ordre_nuit:
+      payload.ordre_nuit === undefined
+        ? existingEmploye.ordre_nuit
+        : normalizeOptionalOrdreNuit(payload.ordre_nuit),
+    controle_fixe: normalizeControleFixe(
+      payload.controle_fixe,
+      Number(existingEmploye.controle_fixe)
+    ),
+    controle_periode:
+      payload.controle_periode === undefined
+        ? existingEmploye.controle_periode
+        : normalizeOptionalControlePeriode(payload.controle_periode),
+  };
+
+  if (!allowedSexes.includes(nextValue.sexe)) {
+    errors.push("sexe must be either Homme or Femme");
+  }
+
+  if (!Number.isInteger(nextValue.groupe_id) || nextValue.groupe_id <= 0) {
+    errors.push("groupe_id must be a valid positive integer");
+  }
+
+  if (nextValue.actif === null) {
+    errors.push("actif must be a boolean or 0/1 value");
+  }
+
+  if (nextValue.controle_fixe === null) {
+    errors.push("controle_fixe must be a boolean or 0/1 value");
+  }
+
+  if (nextValue.travail_nuit_autorise === null) {
+    errors.push("travail_nuit_autorise must be a boolean or 0/1 value");
+  }
+
+  if (nextValue.repos_base_target === "__INVALID__") {
+    errors.push("repos_base_target must be either '1j' or '2j'");
+  }
+
+  if (nextValue.controle_periode === "__INVALID__") {
+    errors.push("controle_periode must be either 'Matin', 'Soir' or null");
+  }
+
+  if (
+    payload.ordre_nuit !== undefined &&
+    payload.ordre_nuit !== null &&
+    payload.ordre_nuit !== "" &&
+    nextValue.ordre_nuit === null
+  ) {
+    errors.push("ordre_nuit must be a valid positive integer when provided");
+  }
+
+  if (nextValue.sexe === "Femme" && Number(payload.travail_nuit_autorise) === 1) {
+    errors.push("Female employees cannot be authorized for night work");
+  }
+
+  if (
+    nextValue.controle_fixe === 1 &&
+    Number(payload.travail_nuit_autorise) === 1
+  ) {
+    errors.push("Fixed controls cannot be authorized for night work");
+  }
+
+  if (
+    nextValue.travail_nuit_autorise === 1 &&
+    nextValue.sexe !== "Homme"
+  ) {
+    errors.push("travail_nuit_autorise requires sexe = 'Homme'");
+  }
+
+  if (
+    nextValue.travail_nuit_autorise === 1 &&
+    nextValue.controle_fixe === 1
+  ) {
+    errors.push("travail_nuit_autorise requires controle_fixe = false");
+  }
+
+  if (
+    nextValue.travail_nuit_autorise === 1 &&
+    nextValue.ordre_nuit === null
+  ) {
+    errors.push("ordre_nuit is required when travail_nuit_autorise = true");
+  }
+
+  if (
+    nextValue.controle_fixe === 1 &&
+    !["Matin", "Soir"].includes(nextValue.controle_periode)
+  ) {
+    errors.push("controle_periode is required and must be 'Matin' or 'Soir' when controle_fixe = true");
+  }
+
+  if (nextValue.controle_fixe === 0 && nextValue.controle_periode !== null) {
+    errors.push("controle_periode must be null when controle_fixe = false");
+  }
+
+  if (nextValue.actif === 1 && !["1j", "2j"].includes(nextValue.repos_base_target)) {
+    errors.push("repos_base_target is required for active employees and must be either '1j' or '2j'");
+  }
+
+  if (errors.length > 0) {
+    return { errors };
+  }
+
+  if (nextValue.sexe === "Femme" || nextValue.controle_fixe === 1) {
+    nextValue.travail_nuit_autorise = 0;
+    nextValue.ordre_nuit = null;
+  }
+
+  if (nextValue.controle_fixe === 0) {
+    nextValue.controle_periode = null;
+  }
+
+  if (nextValue.travail_nuit_autorise === 0) {
+    nextValue.ordre_nuit = null;
+  }
+
+  return { value: nextValue };
+}
+
+async function groupeExists(groupeId, connection = db) {
+  const [rows] = await connection.query("SELECT id FROM groupes WHERE id = ? LIMIT 1", [
     groupeId,
   ]);
 
   return rows.length > 0;
 }
 
-async function utilisateurExists(utilisateurId) {
-  const [rows] = await db.query(
+async function utilisateurExists(utilisateurId, connection = db) {
+  const [rows] = await connection.query(
     "SELECT id FROM utilisateurs WHERE id = ? LIMIT 1",
     [utilisateurId]
   );
@@ -156,12 +360,53 @@ async function utilisateurExists(utilisateurId) {
   return rows.length > 0;
 }
 
-async function findEmployeById(id) {
-  const [rows] = await db.query(`${baseEmployeSelect} WHERE e.id = ? LIMIT 1`, [
+async function findEmployeById(id, connection = db) {
+  const [rows] = await connection.query(`${baseEmployeSelect} WHERE e.id = ? LIMIT 1`, [
     id,
   ]);
 
   return rows[0] || null;
+}
+
+async function hasNightAuthorizationColumn(connection = db) {
+  const [rows] = await connection.query(
+    "SHOW COLUMNS FROM employes LIKE 'travail_nuit_autorise'"
+  );
+
+  return rows.length > 0;
+}
+
+async function fetchActiveEmployeesForPlanningConfig(connection = db) {
+  const includeNightAuthorization = await hasNightAuthorizationColumn(connection);
+  const nightColumnSelect = includeNightAuthorization
+    ? ", e.travail_nuit_autorise"
+    : "";
+  const [rows] = await connection.query(
+    `
+      SELECT
+        e.id,
+        e.prenom,
+        e.nom,
+        e.sexe,
+        e.groupe_id,
+        e.actif,
+        e.controle_fixe,
+        e.repos_base_target,
+        e.ordre_nuit,
+        e.controle_periode,
+        g.nom AS groupe
+        ${nightColumnSelect}
+      FROM employes e
+      JOIN groupes g ON g.id = e.groupe_id
+      WHERE e.actif = TRUE
+      ORDER BY e.groupe_id ASC, e.id ASC
+    `
+  );
+
+  return {
+    employees: rows,
+    hasNightAuthorization: includeNightAuthorization,
+  };
 }
 
 async function getAllEmployes(req, res) {
@@ -287,6 +532,8 @@ async function createEmploye(req, res) {
 }
 
 async function updateEmploye(req, res) {
+  const connection = await db.getConnection();
+
   try {
     const employeId = parseEmployeId(req.params.id);
 
@@ -296,90 +543,96 @@ async function updateEmploye(req, res) {
       });
     }
 
-    const existingEmploye = await findEmployeById(employeId);
+    await connection.beginTransaction();
+
+    const existingEmploye = await findEmployeById(employeId, connection);
 
     if (!existingEmploye) {
+      await connection.rollback();
       return res.status(404).json({
         message: "Employee not found",
       });
     }
 
-    const { error, value } = validateEmployePayload(req.body);
+    const { errors, value } = validateEmployePlanningConfigUpdatePayload(
+      req.body,
+      existingEmploye
+    );
 
-    if (error) {
-      return res.status(400).json({
-        message: error,
+    if (errors) {
+      await connection.rollback();
+      return res.status(422).json({
+        message: "Invalid employee planning configuration.",
+        errors,
       });
     }
 
-    const groupExists = await groupeExists(value.groupe_id);
+    const groupExists = await groupeExists(value.groupe_id, connection);
 
     if (!groupExists) {
+      await connection.rollback();
       return res.status(400).json({
         message: "groupe_id does not exist",
       });
     }
 
-    const nextUtilisateurId =
-      req.body.utilisateur_id === undefined
-        ? existingEmploye.utilisateur_id
-        : value.utilisateur_id;
-    const nextControleFixe =
-      req.body.controle_fixe === undefined
-        ? existingEmploye.controle_fixe
-        : value.controle_fixe;
-    const nextTravailNuitAutorise =
-      req.body.travail_nuit_autorise === undefined
-        ? existingEmploye.travail_nuit_autorise
-        : value.travail_nuit_autorise;
-
-    if (nextUtilisateurId !== null) {
-      const userExists = await utilisateurExists(nextUtilisateurId);
-
-      if (!userExists) {
-        return res.status(400).json({
-          message: "utilisateur_id does not exist",
-        });
-      }
-    }
-
-    await db.query(
+    await connection.query(
       `
         UPDATE employes
         SET
-          prenom = ?,
-          nom = ?,
           sexe = ?,
           groupe_id = ?,
-          utilisateur_id = ?,
+          actif = ?,
+          repos_base_target = ?,
+          travail_nuit_autorise = ?,
+          ordre_nuit = ?,
           controle_fixe = ?,
-          travail_nuit_autorise = ?
+          controle_periode = ?
         WHERE id = ?
       `,
       [
-        value.prenom,
-        value.nom,
         value.sexe,
         value.groupe_id,
-        nextUtilisateurId,
-        nextControleFixe,
-        nextTravailNuitAutorise,
+        value.actif,
+        value.repos_base_target,
+        value.travail_nuit_autorise,
+        value.ordre_nuit,
+        value.controle_fixe,
+        value.controle_periode,
         employeId,
       ]
     );
 
-    const updatedEmploye = await findEmployeById(employeId);
+    const { employees, hasNightAuthorization } =
+      await fetchActiveEmployeesForPlanningConfig(connection);
+
+    validateEmployeePlanningConfig(employees, hasNightAuthorization);
+
+    const updatedEmploye = await findEmployeById(employeId, connection);
+
+    await connection.commit();
 
     return res.json({
-      message: "Employee updated successfully",
-      employe: updatedEmploye,
+      message: "Employé mis à jour avec succès.",
+      employee: updatedEmploye,
     });
   } catch (error) {
+    await connection.rollback();
+
+    if (error instanceof PlanningGenerationError && error.statusCode === 422) {
+      return res.status(422).json({
+        message: "Invalid employee planning configuration.",
+        errors: error.errors || [],
+      });
+    }
+
     console.error(error);
 
     return res.status(500).json({
       message: "Failed to update employee",
     });
+  } finally {
+    connection.release();
   }
 }
 

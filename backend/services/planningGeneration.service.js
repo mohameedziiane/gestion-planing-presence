@@ -271,6 +271,23 @@ function isNightWorkAuthorized(employee, hasNightAuthorization) {
 }
 
 function validateEmployeePlanningConfig(employees, hasNightAuthorization) {
+  const errors = getEmployeePlanningConfigErrors(
+    employees,
+    hasNightAuthorization
+  );
+
+  if (errors.length > 0) {
+    const error = new PlanningGenerationError(
+      422,
+      `Invalid employee planning configuration. ${errors.join(" | ")}`
+    );
+
+    error.errors = errors;
+    throw error;
+  }
+}
+
+function getEmployeePlanningConfigErrors(employees, hasNightAuthorization) {
   const errors = [];
   const matinFixedControls = employees.filter(
     (employee) =>
@@ -389,12 +406,7 @@ function validateEmployeePlanningConfig(employees, hasNightAuthorization) {
     );
   }
 
-  if (errors.length > 0) {
-    throw new PlanningGenerationError(
-      422,
-      `Invalid employee planning configuration. ${errors.join(" | ")}`
-    );
-  }
+  return errors;
 }
 
 function canResolveShiftFixedControlsForDate({
@@ -2422,4 +2434,6 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
 module.exports = {
   PlanningGenerationError,
   generateWeeklyPlanning,
+  validateEmployeePlanningConfig,
+  getEmployeePlanningConfigErrors,
 };
