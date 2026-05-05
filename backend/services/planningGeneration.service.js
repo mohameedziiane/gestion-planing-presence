@@ -43,28 +43,9 @@ class PlanningGenerationError extends Error {
 
 const NIGHT_SHIFT_ANCHOR_DATE = "2026-05-01";
 const NIGHT_SHIFT_BLOCK_LENGTH_DAYS = 7;
-const NIGHT_SHIFT_ORDER = ["SABER", "AYOUB", "YOUNESS"];
 const REST_PATTERN_ANCHOR_DATE = "2026-04-27";
 const PLANNING_WEEK_ANCHOR_DATE = REST_PATTERN_ANCHOR_DATE;
-const REST_BASE_PATTERN = {
-  FATIHA: 1,
-  HAYAT: 2,
-  MONCEF: 2,
-  AYOUB: 1,
-  YOUNESS: 1,
-  ABIRE: 1,
-  RAHMA: 1,
-  SAID: 2,
-  SABER: 1,
-  TAHRA: 2,
-};
 const MILLISECONDS_PER_DAY = 86400000;
-const MATIN_FIXED_CONTROL_NAME = "MONCEF";
-const SOIR_FIXED_CONTROL_NAME = "SAID";
-const FIXED_CONTROL_NAMES = [
-  MATIN_FIXED_CONTROL_NAME,
-  SOIR_FIXED_CONTROL_NAME,
-];
 
 function parsePositiveInt(value) {
   const parsedValue = Number(value);
@@ -183,9 +164,7 @@ function findEmployeeByName(employees, expectedName) {
 }
 
 function isShiftFixedControlEmployee(employee) {
-  return FIXED_CONTROL_NAMES.some((fixedControlName) =>
-    employeeMatchesName(employee, fixedControlName)
-  );
+  return Number(employee?.controle_fixe) === 1;
 }
 
 function idsMatch(leftId, rightId) {
@@ -235,15 +214,15 @@ function buildActiveShiftNormalEmployees({
   );
 }
 
-function getExpectedFixedControlNameForPeriod(periodName) {
+function getExpectedFixedControlPeriod(periodName) {
   const normalizedPeriodName = normalizeText(periodName);
 
   if (normalizedPeriodName === normalizeText("Matin")) {
-    return MATIN_FIXED_CONTROL_NAME;
+    return "Matin";
   }
 
   if (normalizedPeriodName === normalizeText("Soir")) {
-    return SOIR_FIXED_CONTROL_NAME;
+    return "Soir";
   }
 
   return null;
@@ -252,21 +231,26 @@ function getExpectedFixedControlNameForPeriod(periodName) {
 function buildFixedControllersByPeriodId({ employees, matin, soir }) {
   const fixedControllersByPeriodId = {};
   const fixedControlRules = [
-    { period: matin, name: MATIN_FIXED_CONTROL_NAME },
-    { period: soir, name: SOIR_FIXED_CONTROL_NAME },
+    { period: matin, controlePeriode: "Matin" },
+    { period: soir, controlePeriode: "Soir" },
   ];
 
   for (const fixedControlRule of fixedControlRules) {
-    const fixedController = findEmployeeByName(employees, fixedControlRule.name);
+    const fixedControllers = employees.filter(
+      (employee) =>
+        Number(employee.controle_fixe) === 1 &&
+        normalizeText(employee.controle_periode) ===
+          normalizeText(fixedControlRule.controlePeriode)
+    );
 
-    if (!fixedController || Number(fixedController.controle_fixe) !== 1) {
+    if (fixedControllers.length !== 1) {
       throw new PlanningGenerationError(
         400,
-        `${fixedControlRule.name} must exist with controle_fixe = 1 for ${fixedControlRule.period.nom} Contrôle.`
+        `Exactly one active employee must have controle_fixe = 1 and controle_periode = '${fixedControlRule.controlePeriode}' for ${fixedControlRule.period.nom} Controle. Found ${fixedControllers.length}.`
       );
     }
 
-    fixedControllersByPeriodId[fixedControlRule.period.id] = fixedController;
+    fixedControllersByPeriodId[fixedControlRule.period.id] = fixedControllers[0];
   }
 
   return fixedControllersByPeriodId;
@@ -566,16 +550,23 @@ function getRestPatternWeekOffset(startDate) {
 }
 
 function getRestDaysTarget(employee, startDate) {
-  const employeePatternName = normalizeText(employee.prenom);
-  const baseTarget = REST_BASE_PATTERN[employeePatternName];
+  const normalizedBaseTarget = String(employee.repos_base_target || "").trim();
 
-  if (!baseTarget) {
+  if (!normalizedBaseTarget) {
     throw new PlanningGenerationError(
       400,
-      `Missing repos base pattern for employee ${formatEmployeeName(employee)}.`
+      `Missing repos_base_target for active employee ${formatEmployeeName(employee)}.`
     );
   }
 
+  if (!["1j", "2j"].includes(normalizedBaseTarget)) {
+    throw new PlanningGenerationError(
+      400,
+      `Invalid repos_base_target '${normalizedBaseTarget}' for active employee ${formatEmployeeName(employee)}. Expected '1j' or '2j'.`
+    );
+  }
+
+  const baseTarget = normalizedBaseTarget === "1j" ? 1 : 2;
   const weekOffset = getRestPatternWeekOffset(startDate);
 
   if (weekOffset % 2 === 0) {
@@ -615,11 +606,16 @@ async function fetchEmployees(connection, includeNightAuthorization) {
         e.nom,
         e.sexe,
         e.groupe_id,
+        e.actif,
         e.controle_fixe,
+        e.repos_base_target,
+        e.ordre_nuit,
+        e.controle_periode,
         g.nom AS groupe
         ${nightColumnSelect}
       FROM employes e
       JOIN groupes g ON g.id = e.groupe_id
+      WHERE e.actif = TRUE
       ORDER BY e.groupe_id ASC, e.id ASC
     `
   );
@@ -627,27 +623,16 @@ async function fetchEmployees(connection, includeNightAuthorization) {
   return rows;
 }
 
-function getNightCycleName(employee) {
-  const prenom = normalizeText(employee.prenom);
-  const nom = normalizeText(employee.nom);
-
-  return NIGHT_SHIFT_ORDER.find(
-    (expectedName) =>
-      normalizeText(expectedName) === prenom ||
-      normalizeText(expectedName) === nom
-  );
-}
-
 function isEligibleNightEmployee(employee, hasNightAuthorization) {
-  if (!getNightCycleName(employee)) {
-    return false;
-  }
-
   if (employee.sexe !== "Homme") {
     return false;
   }
 
   if (Number(employee.controle_fixe) === 1) {
+    return false;
+  }
+
+  if (employee.ordre_nuit === null || employee.ordre_nuit === undefined) {
     return false;
   }
 
@@ -669,55 +654,37 @@ function buildNightCandidates(employees, hasNightAuthorization, warnings) {
     );
   }
 
-  const nightCandidatesByName = new Map();
+  const nightCandidates = employees
+    .filter((employee) => isEligibleNightEmployee(employee, hasNightAuthorization))
+    .sort((left, right) => {
+      const orderDiff = Number(left.ordre_nuit) - Number(right.ordre_nuit);
 
-  for (const employee of employees) {
-    const nightCycleName = getNightCycleName(employee);
+      if (orderDiff !== 0) {
+        return orderDiff;
+      }
 
-    if (!nightCycleName) {
-      continue;
-    }
+      return Number(left.id) - Number(right.id);
+    });
 
-    if (isEligibleNightEmployee(employee, hasNightAuthorization)) {
-      nightCandidatesByName.set(nightCycleName, employee);
-    }
-  }
-
-  const missingNames = NIGHT_SHIFT_ORDER.filter(
-    (employeeName) => !nightCandidatesByName.has(employeeName)
-  );
-
-  if (missingNames.length > 0) {
+  if (nightCandidates.length < 3) {
     throw new PlanningGenerationError(
       400,
-      `Required night employee(s) missing or not eligible: ${missingNames.join(
-        ", "
-      )}. Night employees must be SABER, AYOUB and YOUNESS, male, non-fixed control employees${
-        hasNightAuthorization ? " with travail_nuit_autorise = 1" : ""
-      }.`
+      `At least 3 active night-capable employees are required. Found ${nightCandidates.length}. Employees must have actif = true, travail_nuit_autorise = true, controle_fixe = false, sexe = 'Homme' and ordre_nuit set.`
     );
   }
 
-  return NIGHT_SHIFT_ORDER.map((employeeName) =>
-    nightCandidatesByName.get(employeeName)
-  );
+  return nightCandidates;
 }
 
 function buildNightAssignments(weekDates, nightCandidates) {
-  const nightCandidatesByName = new Map(
-    nightCandidates.map((employee) => [getNightCycleName(employee), employee])
-  );
-
   return new Map(
     weekDates.map((date) => {
       const daysSinceAnchor = getDaysDifference(NIGHT_SHIFT_ANCHOR_DATE, date);
       const blockIndex = Math.floor(
         daysSinceAnchor / NIGHT_SHIFT_BLOCK_LENGTH_DAYS
       );
-      const employeeName =
-        NIGHT_SHIFT_ORDER[modulo(blockIndex, NIGHT_SHIFT_ORDER.length)];
 
-      return [date, nightCandidatesByName.get(employeeName)];
+      return [date, nightCandidates[modulo(blockIndex, nightCandidates.length)]];
     })
   );
 }
@@ -728,14 +695,13 @@ function getNightBlockIndexForDate(date) {
   return Math.floor(daysSinceAnchor / NIGHT_SHIFT_BLOCK_LENGTH_DAYS);
 }
 
-function getNightBlockInfo(blockIndex, nightCandidatesByName) {
-  const employeeName =
-    NIGHT_SHIFT_ORDER[modulo(blockIndex, NIGHT_SHIFT_ORDER.length)];
+function getNightBlockInfo(blockIndex, nightCandidates) {
+  const employee = nightCandidates[modulo(blockIndex, nightCandidates.length)];
 
   return {
     blockIndex,
-    employeeName,
-    employee: nightCandidatesByName.get(employeeName),
+    employeeName: formatEmployeeName(employee),
+    employee,
     startDate: addDays(
       NIGHT_SHIFT_ANCHOR_DATE,
       blockIndex * NIGHT_SHIFT_BLOCK_LENGTH_DAYS
@@ -754,13 +720,10 @@ function buildNightBoundaryRepos(weekDates, nightCandidates, warnings) {
   const blockIndexes = [
     ...new Set(weekDates.map((date) => getNightBlockIndexForDate(date))),
   ];
-  const nightCandidatesByName = new Map(
-    nightCandidates.map((employee) => [getNightCycleName(employee), employee])
-  );
   const reposRows = [];
 
   for (const blockIndex of blockIndexes) {
-    const blockInfo = getNightBlockInfo(blockIndex, nightCandidatesByName);
+    const blockInfo = getNightBlockInfo(blockIndex, nightCandidates);
     const boundaryRepos = [
       {
         date: addDays(blockInfo.startDate, -1),
@@ -1569,6 +1532,7 @@ function validateGeneratedPlanningBeforeCommit({
   activePeriodsByGroupId,
   roleIds,
   hasNightAuthorization,
+  nightCandidates,
   fixedControllersByPeriodId,
 }) {
   const errors = [];
@@ -1576,6 +1540,7 @@ function validateGeneratedPlanningBeforeCommit({
   const groupsById = buildLookupById(groups);
   const periodsById = buildLookupById(periods);
   const rolesById = buildLookupById(roles);
+  const nightCandidateIds = new Set((nightCandidates || []).map((employee) => employee.id));
   const reposByEmployeeDate = new Set(
     reposRows.map((row) => `${row.employe_id}|${row._date}`)
   );
@@ -1606,6 +1571,13 @@ function validateGeneratedPlanningBeforeCommit({
       continue;
     }
 
+    if (Number(employee.actif) !== 1) {
+      addValidationError(
+        errors,
+        `${row._date}: inactive employee ${employeeName} cannot be assigned.`
+      );
+    }
+
     if (reposByEmployeeDate.has(`${row.employe_id}|${row._date}`)) {
       addValidationError(
         errors,
@@ -1620,10 +1592,10 @@ function validateGeneratedPlanningBeforeCommit({
 
       nightRowsByDate[row._date].push(row);
 
-      if (!getNightCycleName(employee)) {
+      if (!employeeIdSetHas(nightCandidateIds, employee.id)) {
         addValidationError(
           errors,
-          `${row._date} Nuit: ${employeeName} is not one of SABER, AYOUB or YOUNESS.`
+          `${row._date} Nuit: ${employeeName} is not configured as an active night-capable employee.`
         );
       }
 
@@ -1717,7 +1689,12 @@ function validateGeneratedPlanningBeforeCommit({
     const period = periodsById[periodId];
     const shiftName = period?.nom || periodId;
     const fixedController = fixedControllersByPeriodId[periodId];
-    const expectedFixedControlName = getExpectedFixedControlNameForPeriod(shiftName);
+    const expectedFixedControlPeriod = getExpectedFixedControlPeriod(shiftName);
+    const oppositePeriodId =
+      idsMatch(periodId, roleIds.matinPeriodId)
+        ? roleIds.soirPeriodId
+        : roleIds.matinPeriodId;
+    const oppositeFixedController = fixedControllersByPeriodId[oppositePeriodId];
     const activeGroup = groups.find((group) =>
       idsMatch(activePeriodsByGroupId[group.id], periodId)
     );
@@ -1763,22 +1740,12 @@ function validateGeneratedPlanningBeforeCommit({
       }
 
       if (
-        normalizeText(shiftName) === normalizeText("Matin") &&
-        employeeMatchesName(controlEmployee, SOIR_FIXED_CONTROL_NAME)
+        oppositeFixedController &&
+        idsMatch(controlEmployee.id, oppositeFixedController.id)
       ) {
         addValidationError(
           errors,
-          `${date} Matin: SAID cannot be Matin Contrôle.`
-        );
-      }
-
-      if (
-        normalizeText(shiftName) === normalizeText("Soir") &&
-        employeeMatchesName(controlEmployee, MATIN_FIXED_CONTROL_NAME)
-      ) {
-        addValidationError(
-          errors,
-          `${date} Soir: MONCEF cannot be Soir Contrôle.`
+          `${date} ${shiftName}: ${formatEmployeeName(oppositeFixedController)} cannot be ${expectedFixedControlPeriod} Controle.`
         );
       }
 
@@ -1798,7 +1765,7 @@ function validateGeneratedPlanningBeforeCommit({
         if (!idsMatch(controlEmployee.id, fixedController.id)) {
           addValidationError(
             errors,
-            `${date} ${shiftName}: expected ${expectedFixedControlName} as Contrôle, found ${formatEmployeeName(controlEmployee)}.`
+            `${date} ${shiftName}: expected ${formatEmployeeName(fixedController)} as Controle, found ${formatEmployeeName(controlEmployee)}.`
           );
         }
 
@@ -2231,6 +2198,7 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
         nuitPeriodId: nuit.id,
       },
       hasNightAuthorization,
+      nightCandidates,
       fixedControllersByPeriodId,
     });
 
