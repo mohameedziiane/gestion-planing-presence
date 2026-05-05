@@ -268,6 +268,62 @@ function yesNo(value: boolean) {
   return value ? "Oui" : "Non";
 }
 
+function getNightOrderValue(row: EmployeeRow) {
+  return getNumber(row, ["ordre_nuit"]);
+}
+
+function isNightCycleEmployee(row: EmployeeRow) {
+  return (
+    isEmployeeActive(row) &&
+    getBoolean(row, [
+      "travail_nuit_autorise",
+      "can_work_night",
+      "nuit_autorisee",
+    ]) &&
+    getControlValue(row) === "Aucun" &&
+    getNightOrderValue(row) !== null
+  );
+}
+
+function getNightCycleEmployees(employees: EmployeeRow[]) {
+  return employees
+    .filter(isNightCycleEmployee)
+    .sort(
+      (firstEmployee, secondEmployee) =>
+        (getNightOrderValue(firstEmployee) || 0) -
+        (getNightOrderValue(secondEmployee) || 0)
+    );
+}
+
+function getDuplicateNightOrderEmployee(
+  employees: EmployeeRow[],
+  ordreNuit: string,
+  excludedEmployeeId?: EmployeeRow["id"]
+) {
+  const requestedOrder = Number(ordreNuit);
+
+  if (!Number.isFinite(requestedOrder)) {
+    return null;
+  }
+
+  return (
+    employees.find((employee) => {
+      if (!isNightCycleEmployee(employee)) {
+        return false;
+      }
+
+      if (
+        excludedEmployeeId !== undefined &&
+        String(employee.id) === String(excludedEmployeeId)
+      ) {
+        return false;
+      }
+
+      return getNightOrderValue(employee) === requestedOrder;
+    }) || null
+  );
+}
+
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-3">
@@ -276,6 +332,46 @@ function StatCard({ label, value }: { label: string; value: number }) {
       </p>
       <p className="mt-1 text-2xl font-semibold text-[#e1e3e4]">{value}</p>
     </div>
+  );
+}
+
+function NightCycleSummary({ employees }: { employees: EmployeeRow[] }) {
+  const nightCycleEmployees = getNightCycleEmployees(employees);
+
+  return (
+    <section className="mb-5 rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
+      <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <h2 className="text-base font-semibold text-[#e1e3e4]">
+            Cycle de nuit actuel
+          </h2>
+          <p className="mt-1 text-sm text-[#acbdc5]">
+            Le planning de nuit suit cet ordre par blocs de 7 jours. Chaque
+            ordre doit être unique.
+          </p>
+        </div>
+      </div>
+
+      {nightCycleEmployees.length > 0 ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {nightCycleEmployees.map((employee) => (
+            <span
+              key={employee.id || `${getEmployeeName(employee)}-${getOrdreNuit(employee)}`}
+              className="rounded-[3px] border border-[#1AB6FF]/35 bg-[#334149] px-3 py-2 text-sm font-semibold text-[#e1e3e4]"
+            >
+              <span className="mr-2 text-[#1AB6FF]">
+                {getOrdreNuit(employee)}.
+              </span>
+              {getEmployeeName(employee) || "Employé non défini"}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-sm text-[#acbdc5]">
+          Aucun cycle de nuit configuré.
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -405,6 +501,18 @@ export default function AdminEmployesPage() {
       ])
     ).length,
   };
+  const createDuplicateNightOrder =
+    createForm.travail_nuit_autorise && createForm.ordre_nuit.trim()
+      ? getDuplicateNightOrderEmployee(employees, createForm.ordre_nuit)
+      : null;
+  const editDuplicateNightOrder =
+    editForm?.travail_nuit_autorise && editForm.ordre_nuit.trim()
+      ? getDuplicateNightOrderEmployee(
+          employees,
+          editForm.ordre_nuit,
+          editingEmployee?.id
+        )
+      : null;
 
   async function fetchEmployees() {
     const token = localStorage.getItem("token");
@@ -871,16 +979,19 @@ export default function AdminEmployesPage() {
         </div>
 
         {!isLoading && !error ? (
-          <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-            <StatCard label="Total employés" value={employeeStats.total} />
-            <StatCard label="Actifs" value={employeeStats.active} />
-            <StatCard label="Inactifs" value={employeeStats.inactive} />
-            <StatCard label="Nuit autorisée" value={employeeStats.night} />
-            <StatCard
-              label="Contrôles fixes"
-              value={employeeStats.fixedControls}
-            />
-          </div>
+          <>
+            <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+              <StatCard label="Total employés" value={employeeStats.total} />
+              <StatCard label="Actifs" value={employeeStats.active} />
+              <StatCard label="Inactifs" value={employeeStats.inactive} />
+              <StatCard label="Nuit autorisée" value={employeeStats.night} />
+              <StatCard
+                label="Contrôles fixes"
+                value={employeeStats.fixedControls}
+              />
+            </div>
+            <NightCycleSummary employees={employees} />
+          </>
         ) : null}
 
         {isLoading ? (
@@ -1096,6 +1207,17 @@ export default function AdminEmployesPage() {
                   }
                   className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF] disabled:cursor-not-allowed disabled:opacity-50"
                 />
+                <span className="text-xs font-medium text-[#acbdc5]">
+                  Ordre utilisé dans le cycle de nuit. Il doit être unique.
+                </span>
+                {createDuplicateNightOrder ? (
+                  <span className="rounded-[3px] border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-100">
+                    Cet ordre nuit est déjà utilisé par{" "}
+                    {getEmployeeName(createDuplicateNightOrder) ||
+                      "un employé actif"}
+                    .
+                  </span>
+                ) : null}
               </label>
             </div>
 
@@ -1326,6 +1448,17 @@ export default function AdminEmployesPage() {
                   }
                   className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF] disabled:cursor-not-allowed disabled:opacity-50"
                 />
+                <span className="text-xs font-medium text-[#acbdc5]">
+                  Ordre utilisé dans le cycle de nuit. Il doit être unique.
+                </span>
+                {editDuplicateNightOrder ? (
+                  <span className="rounded-[3px] border border-amber-300/30 bg-amber-500/10 px-3 py-2 text-xs font-semibold text-amber-100">
+                    Cet ordre nuit est déjà utilisé par{" "}
+                    {getEmployeeName(editDuplicateNightOrder) ||
+                      "un employé actif"}
+                    .
+                  </span>
+                ) : null}
               </label>
             </div>
 
