@@ -20,6 +20,12 @@ type EditEmployeeForm = {
   ordre_nuit: string;
   controle: "Aucun" | "Matin" | "Soir";
 };
+type CreateEmployeeForm = EditEmployeeForm & {
+  prenom: string;
+  nom: string;
+  email: string;
+  mot_de_passe: string;
+};
 
 function getString(row: NestedRecord, keys: string[]) {
   for (const key of keys) {
@@ -225,6 +231,29 @@ function normalizeForm(form: EditEmployeeForm): EditEmployeeForm {
   return nextForm;
 }
 
+function buildDefaultCreateForm(): CreateEmployeeForm {
+  return {
+    prenom: "",
+    nom: "",
+    email: "",
+    mot_de_passe: "123456",
+    sexe: "Homme",
+    groupe_id: 1,
+    actif: true,
+    repos_base_target: "1j",
+    travail_nuit_autorise: false,
+    ordre_nuit: "",
+    controle: "Aucun",
+  };
+}
+
+function normalizeCreateForm(form: CreateEmployeeForm): CreateEmployeeForm {
+  return {
+    ...form,
+    ...normalizeForm(form),
+  };
+}
+
 function yesNo(value: boolean) {
   return value ? "Oui" : "Non";
 }
@@ -308,6 +337,13 @@ export default function AdminEmployesPage() {
   const [editError, setEditError] = useState("");
   const [editErrors, setEditErrors] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [createForm, setCreateForm] = useState<CreateEmployeeForm>(
+    buildDefaultCreateForm
+  );
+  const [createError, setCreateError] = useState("");
+  const [createErrors, setCreateErrors] = useState<string[]>([]);
+  const [isCreating, setIsCreating] = useState(false);
 
   async function fetchEmployees() {
     const token = localStorage.getItem("token");
@@ -358,6 +394,24 @@ export default function AdminEmployesPage() {
     setSuccessMessage("");
   }
 
+  function openCreateModal() {
+    setCreateForm(buildDefaultCreateForm());
+    setCreateError("");
+    setCreateErrors([]);
+    setSuccessMessage("");
+    setIsCreateModalOpen(true);
+  }
+
+  function closeCreateModal() {
+    if (isCreating) {
+      return;
+    }
+
+    setIsCreateModalOpen(false);
+    setCreateError("");
+    setCreateErrors([]);
+  }
+
   function closeEditModal() {
     if (isSaving) {
       return;
@@ -375,6 +429,14 @@ export default function AdminEmployesPage() {
     );
     setEditError("");
     setEditErrors([]);
+  }
+
+  function updateCreateForm(nextFields: Partial<CreateEmployeeForm>) {
+    setCreateForm((currentForm) =>
+      normalizeCreateForm({ ...currentForm, ...nextFields })
+    );
+    setCreateError("");
+    setCreateErrors([]);
   }
 
   async function handleSaveEmployee() {
@@ -457,6 +519,88 @@ export default function AdminEmployesPage() {
       setEditErrors([]);
     } finally {
       setIsSaving(false);
+    }
+  }
+
+  async function handleCreateEmployee() {
+    const normalizedForm = normalizeCreateForm(createForm);
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    if (
+      !normalizedForm.prenom.trim() ||
+      !normalizedForm.nom.trim() ||
+      !normalizedForm.email.trim() ||
+      !normalizedForm.mot_de_passe
+    ) {
+      setCreateError("PrÃ©nom, nom, email et mot de passe sont requis.");
+      return;
+    }
+
+    if (
+      normalizedForm.travail_nuit_autorise &&
+      normalizedForm.ordre_nuit.trim() === ""
+    ) {
+      setCreateError("Ordre nuit est requis quand la nuit est autorisÃ©e.");
+      return;
+    }
+
+    const payload = {
+      prenom: normalizedForm.prenom.trim(),
+      nom: normalizedForm.nom.trim(),
+      email: normalizedForm.email.trim(),
+      mot_de_passe: normalizedForm.mot_de_passe,
+      sexe: normalizedForm.sexe,
+      groupe_id: normalizedForm.groupe_id,
+      actif: normalizedForm.actif,
+      repos_base_target: normalizedForm.repos_base_target,
+      travail_nuit_autorise: normalizedForm.travail_nuit_autorise,
+      ordre_nuit: normalizedForm.travail_nuit_autorise
+        ? Number(normalizedForm.ordre_nuit)
+        : null,
+      controle_fixe: normalizedForm.controle !== "Aucun",
+      controle_periode:
+        normalizedForm.controle === "Aucun" ? null : normalizedForm.controle,
+    };
+
+    setIsCreating(true);
+    setCreateError("");
+    setCreateErrors([]);
+
+    try {
+      const response = await fetch("http://localhost:5000/api/employes", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setCreateError(data?.message || "Impossible de crÃ©er cet employÃ©.");
+        setCreateErrors(
+          Array.isArray(data?.errors)
+            ? data.errors.map((item: unknown) => String(item))
+            : []
+        );
+        return;
+      }
+
+      setSuccessMessage("EmployÃ© crÃ©Ã© avec succÃ¨s.");
+      setIsCreateModalOpen(false);
+      setCreateForm(buildDefaultCreateForm());
+      await fetchEmployees();
+    } catch {
+      setCreateError("Impossible de contacter le serveur backend.");
+      setCreateErrors([]);
+    } finally {
+      setIsCreating(false);
     }
   }
 
@@ -573,13 +717,22 @@ export default function AdminEmployesPage() {
       </header>
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
-        <div className="mb-6">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
           <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
             Gestion des employés
           </h1>
           <p className="mt-2 text-sm text-[#acbdc5]">
             Liste des employés de la Gare Routière de Taza
           </p>
+          </div>
+          <button
+            type="button"
+            onClick={openCreateModal}
+            className="w-full border border-[#1AB6FF] bg-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:bg-transparent hover:text-[#e1e3e4] sm:w-auto"
+          >
+            Ajouter employÃ©
+          </button>
         </div>
 
         {isLoading ? (
@@ -614,6 +767,222 @@ export default function AdminEmployesPage() {
           </>
         )}
       </section>
+
+      {isCreateModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 py-4 sm:items-center">
+          <div className="max-h-[92vh] w-full max-w-[620px] overflow-y-auto border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4 border-b border-[rgba(172,189,197,0.15)] pb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#e1e3e4]">
+                  Ajouter employé
+                </h2>
+                <p className="mt-1 text-sm text-[#acbdc5]">
+                  Nouvel employé de la Gare Routière de Taza
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeCreateModal}
+                className="border border-[rgba(172,189,197,0.18)] px-3 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Prénom
+                <input
+                  type="text"
+                  value={createForm.prenom}
+                  onChange={(event) =>
+                    updateCreateForm({ prenom: event.target.value })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Nom
+                <input
+                  type="text"
+                  value={createForm.nom}
+                  onChange={(event) =>
+                    updateCreateForm({ nom: event.target.value })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Email
+                <input
+                  type="email"
+                  value={createForm.email}
+                  onChange={(event) =>
+                    updateCreateForm({ email: event.target.value })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Mot de passe
+                <input
+                  type="text"
+                  value={createForm.mot_de_passe}
+                  onChange={(event) =>
+                    updateCreateForm({ mot_de_passe: event.target.value })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Sexe
+                <select
+                  value={createForm.sexe}
+                  onChange={(event) =>
+                    updateCreateForm({
+                      sexe: event.target.value as "Homme" | "Femme",
+                    })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                >
+                  <option value="Homme">Homme</option>
+                  <option value="Femme">Femme</option>
+                </select>
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Groupe
+                <select
+                  value={createForm.groupe_id}
+                  onChange={(event) =>
+                    updateCreateForm({ groupe_id: Number(event.target.value) })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                >
+                  <option value={1}>Groupe A</option>
+                  <option value={2}>Groupe B</option>
+                </select>
+              </label>
+
+              <label className="flex items-center justify-between gap-3 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3 text-sm font-semibold text-[#e1e3e4]">
+                Actif
+                <input
+                  type="checkbox"
+                  checked={createForm.actif}
+                  onChange={(event) =>
+                    updateCreateForm({ actif: event.target.checked })
+                  }
+                  className="h-5 w-5 accent-[#1AB6FF]"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Repos base
+                <select
+                  value={createForm.repos_base_target}
+                  onChange={(event) =>
+                    updateCreateForm({
+                      repos_base_target: event.target.value as "1j" | "2j",
+                    })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                >
+                  <option value="1j">1j</option>
+                  <option value="2j">2j</option>
+                </select>
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Contrôle fixe
+                <select
+                  value={createForm.controle}
+                  onChange={(event) =>
+                    updateCreateForm({
+                      controle: event.target.value as
+                        | "Aucun"
+                        | "Matin"
+                        | "Soir",
+                    })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                >
+                  <option value="Aucun">Aucun</option>
+                  <option value="Matin">Matin</option>
+                  <option value="Soir">Soir</option>
+                </select>
+              </label>
+
+              <label className="flex items-center justify-between gap-3 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3 text-sm font-semibold text-[#e1e3e4]">
+                Peut travailler la nuit
+                <input
+                  type="checkbox"
+                  checked={createForm.travail_nuit_autorise}
+                  disabled={
+                    createForm.sexe === "Femme" ||
+                    createForm.controle !== "Aucun"
+                  }
+                  onChange={(event) =>
+                    updateCreateForm({
+                      travail_nuit_autorise: event.target.checked,
+                    })
+                  }
+                  className="h-5 w-5 accent-[#1AB6FF] disabled:opacity-40"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4] sm:col-span-2">
+                Ordre nuit
+                <input
+                  type="number"
+                  min={1}
+                  value={createForm.ordre_nuit}
+                  disabled={!createForm.travail_nuit_autorise}
+                  required={createForm.travail_nuit_autorise}
+                  onChange={(event) =>
+                    updateCreateForm({ ordre_nuit: event.target.value })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF] disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </label>
+            </div>
+
+            {createError ? (
+              <div className="mt-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                <p className="font-semibold">{createError}</p>
+                {createErrors.length > 0 ? (
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {createErrors.map((item, index) => (
+                      <li key={`${item}-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closeCreateModal}
+                className="border border-[rgba(172,189,197,0.18)] px-4 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateEmployee}
+                disabled={isCreating}
+                className="border border-[#1AB6FF] bg-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:bg-transparent hover:text-[#e1e3e4] disabled:cursor-wait disabled:opacity-60"
+              >
+                {isCreating ? "Création..." : "Créer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {editingEmployee && editForm ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 py-4 sm:items-center">
