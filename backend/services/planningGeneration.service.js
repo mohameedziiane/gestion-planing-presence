@@ -44,10 +44,27 @@ class PlanningGenerationError extends Error {
 const NIGHT_SHIFT_ANCHOR_DATE = "2026-05-01";
 const NIGHT_SHIFT_BLOCK_LENGTH_DAYS = 7;
 const NIGHT_SHIFT_ORDER = ["SABER", "AYOUB", "YOUNESS"];
-const PLANNING_WEEK_ANCHOR_DATE = "2026-05-04";
+const REST_PATTERN_ANCHOR_DATE = "2026-04-27";
+const PLANNING_WEEK_ANCHOR_DATE = REST_PATTERN_ANCHOR_DATE;
+const REST_BASE_PATTERN = {
+  FATIHA: 1,
+  HAYAT: 2,
+  MONCEF: 2,
+  AYOUB: 1,
+  YOUNESS: 1,
+  ABIRE: 1,
+  RAHMA: 1,
+  SAID: 2,
+  SABER: 1,
+  TAHRA: 2,
+};
 const MILLISECONDS_PER_DAY = 86400000;
-const GROUP_A_FIXED_CONTROL_NAME = "MONCEF";
-const GROUP_B_FIXED_CONTROL_NAME = "SAID";
+const MATIN_FIXED_CONTROL_NAME = "MONCEF";
+const SOIR_FIXED_CONTROL_NAME = "SAID";
+const FIXED_CONTROL_NAMES = [
+  MATIN_FIXED_CONTROL_NAME,
+  SOIR_FIXED_CONTROL_NAME,
+];
 
 function parsePositiveInt(value) {
   const parsedValue = Number(value);
@@ -157,27 +174,175 @@ function employeeMatchesName(employee, expectedName) {
   );
 }
 
-function getExpectedFixedControlNameForGroup(group) {
-  const normalizedGroupName = normalizeText(group.nom);
+function formatEmployeeName(employee) {
+  return `${employee.prenom} ${employee.nom}`.trim();
+}
 
-  if (normalizedGroupName === normalizeText("Groupe A") ||
-      normalizedGroupName === normalizeText("Groupe 1")) {
-    return GROUP_A_FIXED_CONTROL_NAME;
+function findEmployeeByName(employees, expectedName) {
+  return employees.find((employee) => employeeMatchesName(employee, expectedName)) || null;
+}
+
+function isShiftFixedControlEmployee(employee) {
+  return FIXED_CONTROL_NAMES.some((fixedControlName) =>
+    employeeMatchesName(employee, fixedControlName)
+  );
+}
+
+function idsMatch(leftId, rightId) {
+  return Number(leftId) === Number(rightId);
+}
+
+function employeeIdSetHas(employeeIds, employeeId) {
+  for (const candidateId of employeeIds) {
+    if (idsMatch(candidateId, employeeId)) {
+      return true;
+    }
   }
 
-  if (normalizedGroupName === normalizeText("Groupe B") ||
-      normalizedGroupName === normalizeText("Groupe 2")) {
-    return GROUP_B_FIXED_CONTROL_NAME;
+  return false;
+}
+
+function buildEmployeeDateKey(employeeId, date) {
+  return `${employeeId}|${date}`;
+}
+
+function buildReposKeySet(reposRows = []) {
+  return new Set(
+    reposRows.map((reposRow) =>
+      buildEmployeeDateKey(reposRow.employe_id, reposRow._date)
+    )
+  );
+}
+
+function employeeHasReposOnDate(reposKeys, employeeId, date) {
+  return Boolean(reposKeys?.has(buildEmployeeDateKey(employeeId, date)));
+}
+
+function buildActiveShiftNormalEmployees({
+  activeGroup,
+  employees,
+  nightEmployee,
+  restEmployeeIds,
+  assignedEmployeeIds = new Set(),
+}) {
+  return employees.filter(
+    (employee) =>
+      idsMatch(employee.groupe_id, activeGroup.id) &&
+      !isShiftFixedControlEmployee(employee) &&
+      (!nightEmployee || !idsMatch(employee.id, nightEmployee.id)) &&
+      !employeeIdSetHas(restEmployeeIds, employee.id) &&
+      !employeeIdSetHas(assignedEmployeeIds, employee.id)
+  );
+}
+
+function getExpectedFixedControlNameForPeriod(periodName) {
+  const normalizedPeriodName = normalizeText(periodName);
+
+  if (normalizedPeriodName === normalizeText("Matin")) {
+    return MATIN_FIXED_CONTROL_NAME;
+  }
+
+  if (normalizedPeriodName === normalizeText("Soir")) {
+    return SOIR_FIXED_CONTROL_NAME;
   }
 
   return null;
 }
 
-function formatEmployeeName(employee) {
-  return `${employee.prenom} ${employee.nom}`.trim();
+function buildFixedControllersByPeriodId({ employees, matin, soir }) {
+  const fixedControllersByPeriodId = {};
+  const fixedControlRules = [
+    { period: matin, name: MATIN_FIXED_CONTROL_NAME },
+    { period: soir, name: SOIR_FIXED_CONTROL_NAME },
+  ];
+
+  for (const fixedControlRule of fixedControlRules) {
+    const fixedController = findEmployeeByName(employees, fixedControlRule.name);
+
+    if (!fixedController || Number(fixedController.controle_fixe) !== 1) {
+      throw new PlanningGenerationError(
+        400,
+        `${fixedControlRule.name} must exist with controle_fixe = 1 for ${fixedControlRule.period.nom} Contrôle.`
+      );
+    }
+
+    fixedControllersByPeriodId[fixedControlRule.period.id] = fixedController;
+  }
+
+  return fixedControllersByPeriodId;
 }
 
-function findFixedControllerForGroup(group, groupEmployees) {
+function canResolveShiftFixedControlsForDate({
+  date,
+  restEmployeeIds,
+  nightEmployee,
+  groups,
+  employees,
+  employeesByGroupId,
+  activePeriodsByGroupId,
+  fixedControllersByPeriodId,
+  roleIds,
+}) {
+  const assignedEmployeeIds = new Set(nightEmployee ? [nightEmployee.id] : []);
+
+  for (const periodId of [roleIds.matinPeriodId, roleIds.soirPeriodId]) {
+    const fixedController = fixedControllersByPeriodId[periodId];
+    const activeGroup = getActiveGroupForPeriod(
+      groups,
+      activePeriodsByGroupId,
+      periodId
+    );
+
+    if (!fixedController || !activeGroup) {
+      return false;
+    }
+
+    const activeShiftEmployees = buildActiveShiftNormalEmployees({
+      activeGroup,
+      employees: employeesByGroupId[activeGroup.id] || [],
+      nightEmployee,
+      restEmployeeIds,
+      assignedEmployeeIds,
+    });
+
+    if (
+      !employeeIdSetHas(restEmployeeIds, fixedController.id) &&
+      (!nightEmployee || !idsMatch(fixedController.id, nightEmployee.id)) &&
+      !employeeIdSetHas(assignedEmployeeIds, fixedController.id)
+    ) {
+      if (activeShiftEmployees.length + 1 < 3) {
+        return false;
+      }
+
+      assignedEmployeeIds.add(fixedController.id);
+      continue;
+    }
+
+    if (activeShiftEmployees.length < 3) {
+      return false;
+    }
+
+    const replacement = findControlReplacement({
+      activeShiftEmployees,
+      fixedController,
+      nightEmployee,
+      restEmployeeIds,
+      assignedEmployeeIds,
+    });
+
+    if (!replacement) {
+      return false;
+    }
+
+    assignedEmployeeIds.add(replacement.id);
+  }
+
+  return true;
+}
+
+function unusedFindFixedControllerForGroup(group, groupEmployees) {
+  return null;
+/*
   const expectedFixedControlName = getExpectedFixedControlNameForGroup(group);
 
   if (!expectedFixedControlName) {
@@ -201,16 +366,21 @@ function findFixedControllerForGroup(group, groupEmployees) {
   }
 
   return fixedController;
+*/
 }
 
 function isValidControlReplacement({
   employee,
-  group,
   fixedController,
   nightEmployee,
   restEmployeeIds,
+  assignedEmployeeIds = new Set(),
 }) {
-  if (Number(employee.id) === Number(fixedController.id)) {
+  if (!employee || !fixedController) {
+    return false;
+  }
+
+  if (idsMatch(employee.id, fixedController.id)) {
     return false;
   }
 
@@ -218,15 +388,19 @@ function isValidControlReplacement({
     return false;
   }
 
-  if (Number(employee.groupe_id) !== Number(group.id)) {
+  if (isShiftFixedControlEmployee(employee)) {
     return false;
   }
 
-  if (restEmployeeIds.has(employee.id)) {
+  if (employeeIdSetHas(restEmployeeIds, employee.id)) {
     return false;
   }
 
-  if (nightEmployee && Number(employee.id) === Number(nightEmployee.id)) {
+  if (nightEmployee && idsMatch(employee.id, nightEmployee.id)) {
+    return false;
+  }
+
+  if (employeeIdSetHas(assignedEmployeeIds, employee.id)) {
     return false;
   }
 
@@ -234,23 +408,131 @@ function isValidControlReplacement({
 }
 
 function findControlReplacement({
-  group,
-  groupEmployees,
+  activeShiftEmployees = [],
   fixedController,
   nightEmployee,
   restEmployeeIds,
+  assignedEmployeeIds = new Set(),
 }) {
   return (
-    groupEmployees.find((employee) =>
+    activeShiftEmployees.find((employee) =>
       isValidControlReplacement({
         employee,
-        group,
         fixedController,
         nightEmployee,
         restEmployeeIds,
+        assignedEmployeeIds,
       })
     ) || null
   );
+}
+
+function getFixedControlPeriodIdForEmployee(employee, fixedControllersByPeriodId) {
+  if (!employee || !fixedControllersByPeriodId) {
+    return null;
+  }
+
+  const matchingEntry = Object.entries(fixedControllersByPeriodId).find(
+    ([, fixedController]) => idsMatch(fixedController.id, employee.id)
+  );
+
+  return matchingEntry ? Number(matchingEntry[0]) : null;
+}
+
+function getActiveGroupForPeriod(groups, activePeriodsByGroupId, periodId) {
+  return groups.find((group) =>
+    idsMatch(activePeriodsByGroupId[group.id], periodId)
+  ) || null;
+}
+
+function getReservedControlReplacementIds(controlContext, date) {
+  return controlContext?.reservedControlReplacementIdsByDate?.get(date) || new Set();
+}
+
+function reserveControlReplacementId(controlContext, date, employeeId) {
+  if (!controlContext?.reservedControlReplacementIdsByDate) {
+    return;
+  }
+
+  if (!controlContext.reservedControlReplacementIdsByDate.has(date)) {
+    controlContext.reservedControlReplacementIdsByDate.set(date, new Set());
+  }
+
+  controlContext.reservedControlReplacementIdsByDate.get(date).add(employeeId);
+}
+
+function snapshotReservedControlReplacements(controlContext) {
+  return new Map(
+    [...(controlContext?.reservedControlReplacementIdsByDate || new Map()).entries()]
+      .map(([date, employeeIds]) => [date, new Set(employeeIds)])
+  );
+}
+
+function restoreReservedControlReplacements(controlContext, snapshot) {
+  if (!controlContext?.reservedControlReplacementIdsByDate) {
+    return;
+  }
+
+  controlContext.reservedControlReplacementIdsByDate.clear();
+  snapshot.forEach((employeeIds, date) => {
+    controlContext.reservedControlReplacementIdsByDate.set(date, new Set(employeeIds));
+  });
+}
+
+function findFixedShiftControlReplacementForRest({
+  fixedController,
+  date,
+  restEmployeeIds,
+  nightEmployee,
+  controlContext,
+}) {
+  const periodId = getFixedControlPeriodIdForEmployee(
+    fixedController,
+    controlContext?.fixedControllersByPeriodId
+  );
+
+  if (!periodId) {
+    return null;
+  }
+
+  const activeGroup = getActiveGroupForPeriod(
+    controlContext.groups,
+    controlContext.activePeriodsByGroupId,
+    periodId
+  );
+
+  if (!activeGroup) {
+    return null;
+  }
+
+  const reservedReplacementIds = getReservedControlReplacementIds(controlContext, date);
+  const assignedEmployeeIds = new Set([
+    ...reservedReplacementIds,
+    ...(nightEmployee ? [nightEmployee.id] : []),
+  ]);
+  const globalPreassignedReposRows = controlContext?.globalPreassignedReposRows || [];
+  const globalPreassignedRestEmployeeIds = globalPreassignedReposRows
+    .filter((reposRow) => reposRow._date === date)
+    .map((reposRow) => reposRow.employe_id);
+  const unavailableRestEmployeeIds = new Set([
+    ...restEmployeeIds,
+    ...globalPreassignedRestEmployeeIds,
+  ]);
+  const activeShiftEmployees = buildActiveShiftNormalEmployees({
+    activeGroup,
+    employees: controlContext.employeesByGroupId[activeGroup.id] || [],
+    nightEmployee,
+    restEmployeeIds: unavailableRestEmployeeIds,
+    assignedEmployeeIds,
+  });
+
+  return findControlReplacement({
+    activeShiftEmployees,
+    fixedController,
+    nightEmployee,
+    restEmployeeIds: unavailableRestEmployeeIds,
+    assignedEmployeeIds,
+  });
 }
 
 function getRotationType(weekNumber) {
@@ -270,8 +552,37 @@ function getPlanningWeekNumber(startDate) {
   return Math.floor(daysDiff / 7) + 1;
 }
 
-function getRestDaysTarget(employee, weekNumber) {
-  return (employee.id + weekNumber) % 2 === 0 ? 2 : 1;
+function getRestPatternWeekOffset(startDate) {
+  const daysDiff = getDaysDifference(REST_PATTERN_ANCHOR_DATE, startDate);
+
+  if (daysDiff < 0) {
+    throw new PlanningGenerationError(
+      400,
+      `startDate must be on or after repos pattern anchor date ${REST_PATTERN_ANCHOR_DATE}.`
+    );
+  }
+
+  return Math.floor(daysDiff / 7);
+}
+
+function getRestDaysTarget(employee, startDate) {
+  const employeePatternName = normalizeText(employee.prenom);
+  const baseTarget = REST_BASE_PATTERN[employeePatternName];
+
+  if (!baseTarget) {
+    throw new PlanningGenerationError(
+      400,
+      `Missing repos base pattern for employee ${formatEmployeeName(employee)}.`
+    );
+  }
+
+  const weekOffset = getRestPatternWeekOffset(startDate);
+
+  if (weekOffset % 2 === 0) {
+    return baseTarget;
+  }
+
+  return baseTarget === 1 ? 2 : 1;
 }
 
 function buildAlternatingRoleIds(count, seed, roleIds) {
@@ -539,18 +850,22 @@ function buildRestAssignmentsForGroup({
   group,
   groupEmployees,
   weekDates,
+  startDate,
   weekNumber,
   nightAssignmentsByDate,
   preassignedReposRows = [],
+  globalPreassignedReposRows = [],
+  globalPreassignedReposKeys = new Set(),
+  existingReposRows = [],
+  controlContext = null,
   warnings,
 }) {
-  const fixedController = findFixedControllerForGroup(group, groupEmployees);
+  const fixedController = null;
   const dailyRestAssignments = new Map(weekDates.map((date) => [date, []]));
   const employeeRestDates = new Map(groupEmployees.map((employee) => [employee.id, []]));
   const reposTypeByEmployeeDate = new Map();
-  const reservedControlReplacementByDate = new Map();
   const restTargets = new Map(
-    groupEmployees.map((employee) => [employee.id, getRestDaysTarget(employee, weekNumber)])
+    groupEmployees.map((employee) => [employee.id, getRestDaysTarget(employee, startDate)])
   );
 
   for (const reposRow of preassignedReposRows) {
@@ -565,6 +880,17 @@ function buildRestAssignmentsForGroup({
     const dailyAssignedEmployees = dailyRestAssignments.get(reposRow._date);
     const assignedRestDates = employeeRestDates.get(employee.id);
     const reposKey = `${employee.id}|${reposRow._date}`;
+    const reservedControlReplacementIds = getReservedControlReplacementIds(
+      controlContext,
+      reposRow._date
+    );
+
+    if (employeeIdSetHas(reservedControlReplacementIds, employee.id)) {
+      throw new PlanningGenerationError(
+        400,
+        `Required night-boundary repos for ${formatEmployeeName(employee)} on ${reposRow._date} conflicts with a reserved Contrôle replacement.`
+      );
+    }
 
     if (!dailyAssignedEmployees.includes(employee.id)) {
       dailyAssignedEmployees.push(employee.id);
@@ -594,30 +920,16 @@ function buildRestAssignmentsForGroup({
     return Math.max(groupEmployees.length - 3 - nightCount, 0);
   }
 
-  function reserveControlReplacementForRest(employee, date) {
-    if (!fixedController || Number(employee.id) !== Number(fixedController.id)) {
-      return;
-    }
-
-    const replacement = findControlReplacement({
-      group,
-      groupEmployees,
-      fixedController,
-      nightEmployee: getNightEmployeeForDate(date),
-      restEmployeeIds: new Set(dailyRestAssignments.get(date)),
-    });
-
-    if (replacement) {
-      reservedControlReplacementByDate.set(date, replacement.id);
-    }
-  }
-
   function canAssignRest(employee, date) {
     const assignedRestDates = employeeRestDates.get(employee.id);
     const dailyAssignedEmployees = dailyRestAssignments.get(date);
     const nightEmployee = getNightEmployeeForDate(date);
+    const shiftNightEmployee = nightAssignmentsByDate.get(date);
     const maxRestCount = getMaxRestCountForDate(date);
-    const reservedControlReplacementId = reservedControlReplacementByDate.get(date);
+    const reservedControlReplacementIds = getReservedControlReplacementIds(
+      controlContext,
+      date
+    );
 
     if (assignedRestDates.length >= restTargets.get(employee.id)) {
       return false;
@@ -631,15 +943,74 @@ function buildRestAssignmentsForGroup({
       return false;
     }
 
-    if (
-      reservedControlReplacementId &&
-      Number(reservedControlReplacementId) === Number(employee.id)
-    ) {
+    if (employeeIdSetHas(reservedControlReplacementIds, employee.id)) {
+      return false;
+    }
+
+    if (employeeHasReposOnDate(globalPreassignedReposKeys, employee.id, date)) {
       return false;
     }
 
     if (dailyAssignedEmployees.length >= maxRestCount) {
       return false;
+    }
+
+    if (controlContext) {
+      const simulatedRestEmployeeIds = new Set([
+        ...globalPreassignedReposRows
+          .filter((reposRow) => reposRow._date === date)
+          .map((reposRow) => reposRow.employe_id),
+        ...existingReposRows
+          .filter((reposRow) => reposRow._date === date)
+          .map((reposRow) => reposRow.employe_id),
+        ...dailyAssignedEmployees,
+        employee.id,
+      ]);
+
+      if (
+        !canResolveShiftFixedControlsForDate({
+          date,
+          restEmployeeIds: simulatedRestEmployeeIds,
+          groups: controlContext.groups,
+          employees: controlContext.employees,
+          employeesByGroupId: controlContext.employeesByGroupId,
+          activePeriodsByGroupId: controlContext.activePeriodsByGroupId,
+          fixedControllersByPeriodId: controlContext.fixedControllersByPeriodId,
+          roleIds: controlContext.roleIds,
+          nightEmployee: shiftNightEmployee,
+        })
+      ) {
+        return false;
+      }
+
+      if (
+        getFixedControlPeriodIdForEmployee(
+          employee,
+          controlContext.fixedControllersByPeriodId
+        )
+      ) {
+        const simulatedRestEmployeeIds = new Set([
+          ...globalPreassignedReposRows
+            .filter((reposRow) => reposRow._date === date)
+            .map((reposRow) => reposRow.employe_id),
+          ...existingReposRows
+            .filter((reposRow) => reposRow._date === date)
+            .map((reposRow) => reposRow.employe_id),
+          ...dailyAssignedEmployees,
+          employee.id,
+        ]);
+        const replacement = findFixedShiftControlReplacementForRest({
+          fixedController: employee,
+          date,
+          restEmployeeIds: simulatedRestEmployeeIds,
+          nightEmployee: shiftNightEmployee,
+          controlContext,
+        });
+
+        if (!replacement) {
+          return false;
+        }
+      }
     }
 
     if (fixedController && Number(employee.id) === Number(fixedController.id)) {
@@ -687,7 +1058,29 @@ function buildRestAssignmentsForGroup({
     dailyRestAssignments.get(date).push(employee.id);
     employeeRestDates.get(employee.id).push(date);
     reposTypeByEmployeeDate.set(`${employee.id}|${date}`, type);
-    reserveControlReplacementForRest(employee, date);
+
+    if (controlContext) {
+      const restEmployeeIds = new Set([
+        ...globalPreassignedReposRows
+          .filter((reposRow) => reposRow._date === date)
+          .map((reposRow) => reposRow.employe_id),
+        ...existingReposRows
+          .filter((reposRow) => reposRow._date === date)
+          .map((reposRow) => reposRow.employe_id),
+        ...dailyRestAssignments.get(date),
+      ]);
+      const replacement = findFixedShiftControlReplacementForRest({
+        fixedController: employee,
+        date,
+        restEmployeeIds,
+        nightEmployee: nightAssignmentsByDate.get(date),
+        controlContext,
+      });
+
+      if (replacement) {
+        reserveControlReplacementId(controlContext, date, replacement.id);
+      }
+    }
   }
 
   function ensureRestOnDate(employee, date, type) {
@@ -719,7 +1112,8 @@ function buildRestAssignmentsForGroup({
         ])
       ),
       reposTypeByEmployeeDate: new Map(reposTypeByEmployeeDate),
-      reservedControlReplacementByDate: new Map(reservedControlReplacementByDate),
+      reservedControlReplacementIdsByDate:
+        snapshotReservedControlReplacements(controlContext),
     };
   }
 
@@ -739,10 +1133,10 @@ function buildRestAssignmentsForGroup({
       reposTypeByEmployeeDate.set(key, type);
     });
 
-    reservedControlReplacementByDate.clear();
-    snapshot.reservedControlReplacementByDate.forEach((employeeId, date) => {
-      reservedControlReplacementByDate.set(date, employeeId);
-    });
+    restoreReservedControlReplacements(
+      controlContext,
+      snapshot.reservedControlReplacementIdsByDate
+    );
   }
 
   function tryAssignConsecutiveRestPair(employee, dates) {
@@ -798,18 +1192,14 @@ function buildRestAssignmentsForGroup({
     });
   }
 
-  for (const date of weekDates) {
-    const dailyAssignedEmployees = dailyRestAssignments.get(date);
-
-    if (
-      fixedController &&
-      dailyAssignedEmployees.includes(fixedController.id)
-    ) {
-      reserveControlReplacementForRest(fixedController, date);
-    }
-  }
-
   const employeesByPriority = [...groupEmployees].sort((left, right) => {
+    const leftIsFixedShiftControl = isShiftFixedControlEmployee(left);
+    const rightIsFixedShiftControl = isShiftFixedControlEmployee(right);
+
+    if (leftIsFixedShiftControl !== rightIsFixedShiftControl) {
+      return leftIsFixedShiftControl ? -1 : 1;
+    }
+
     const targetDifference = restTargets.get(right.id) - restTargets.get(left.id);
 
     if (targetDifference !== 0) {
@@ -963,8 +1353,9 @@ function buildPlanningRows({
         );
       } else {
         controlEmployee = findControlReplacement({
-          group,
-          groupEmployees,
+          activeShiftEmployees: shiftEmployees.filter(
+            (employee) => !isShiftFixedControlEmployee(employee)
+          ),
           fixedController,
           nightEmployee,
           restEmployeeIds,
@@ -1012,6 +1403,141 @@ function buildPlanningRows({
   return planningRows;
 }
 
+function buildShiftFixedPlanningRows({
+  groups,
+  employees,
+  employeesByGroupId,
+  weekDates,
+  activePeriodsByGroupId,
+  roleIds,
+  nightAssignmentsByDate,
+  reposByGroupId,
+  fixedControllersByPeriodId,
+  warnings,
+}) {
+  const planningRows = [];
+  const shiftPeriodIds = [roleIds.matinPeriodId, roleIds.soirPeriodId];
+
+  for (let dayIndex = 0; dayIndex < weekDates.length; dayIndex += 1) {
+    const date = weekDates[dayIndex];
+    const nightEmployee = nightAssignmentsByDate.get(date);
+    const assignedEmployeeIds = new Set([nightEmployee.id]);
+    const restEmployeeIds = new Set(
+      Object.values(reposByGroupId).flatMap((reposByDate) =>
+        reposByDate.get(date) || []
+      )
+    );
+    const shiftPlans = shiftPeriodIds.map((periodId) => {
+      const activeGroup = groups.find(
+        (group) => Number(activePeriodsByGroupId[group.id]) === Number(periodId)
+      );
+
+      if (!activeGroup) {
+        throw new PlanningGenerationError(
+          400,
+          `Missing active group for period ${periodId} on ${date}.`
+        );
+      }
+
+      const activeShiftEmployees = buildActiveShiftNormalEmployees({
+        activeGroup,
+        employees: employeesByGroupId[activeGroup.id] || [],
+        nightEmployee,
+        restEmployeeIds,
+      });
+
+      return {
+        periodId,
+        activeGroup,
+        activeShiftEmployees,
+        controlEmployee: null,
+      };
+    });
+
+    planningRows.push({
+      employe_id: nightEmployee.id,
+      _date: date,
+      periode_id: roleIds.nuitPeriodId,
+      role_travail_id: roleIds.guichetCaisse,
+    });
+
+    for (const shiftPlan of shiftPlans) {
+      const fixedController = fixedControllersByPeriodId[shiftPlan.periodId] || null;
+
+      if (!fixedController) {
+        throw new PlanningGenerationError(
+          400,
+          `Missing fixed Contrôle configuration for period ${shiftPlan.periodId} on ${date}.`
+        );
+      }
+
+      if (
+        !employeeIdSetHas(restEmployeeIds, fixedController.id) &&
+        !idsMatch(fixedController.id, nightEmployee.id) &&
+        !employeeIdSetHas(assignedEmployeeIds, fixedController.id)
+      ) {
+        shiftPlan.controlEmployee = fixedController;
+      } else {
+        shiftPlan.controlEmployee = findControlReplacement({
+          activeShiftEmployees: shiftPlan.activeShiftEmployees.filter(
+            (employee) => !employeeIdSetHas(assignedEmployeeIds, employee.id)
+          ),
+          fixedController,
+          nightEmployee,
+          restEmployeeIds,
+          assignedEmployeeIds,
+        });
+
+        if (!shiftPlan.controlEmployee) {
+          throw new PlanningGenerationError(
+            400,
+            `Missing Contrôle for period ${shiftPlan.periodId} on ${date}. ${formatEmployeeName(fixedController)} is unavailable and no valid male replacement exists.`
+          );
+        }
+      }
+
+      planningRows.push({
+        employe_id: shiftPlan.controlEmployee.id,
+        _date: date,
+        periode_id: shiftPlan.periodId,
+        role_travail_id: roleIds.controle,
+      });
+      assignedEmployeeIds.add(shiftPlan.controlEmployee.id);
+    }
+
+    for (const shiftPlan of shiftPlans) {
+      const availableNormalEmployees = shiftPlan.activeShiftEmployees.filter(
+        (employee) => !employeeIdSetHas(assignedEmployeeIds, employee.id)
+      );
+
+      if (availableNormalEmployees.length < 2) {
+        addWarning(
+          warnings,
+          `${shiftPlan.activeGroup.nom} has fewer than 2 normal employees available for period ${shiftPlan.periodId} on ${date}.`
+        );
+      }
+
+      const roleSequence = buildAlternatingRoleIds(
+        availableNormalEmployees.length,
+        dayIndex + shiftPlan.activeGroup.id,
+        roleIds
+      );
+
+      availableNormalEmployees.forEach((employee, index) => {
+        planningRows.push({
+          employe_id: employee.id,
+          _date: date,
+          periode_id: shiftPlan.periodId,
+          role_travail_id: roleSequence[index],
+        });
+        assignedEmployeeIds.add(employee.id);
+      });
+    }
+  }
+
+  return planningRows;
+}
+
 function addValidationError(errors, message) {
   if (!errors.includes(message)) {
     errors.push(message);
@@ -1043,7 +1569,7 @@ function validateGeneratedPlanningBeforeCommit({
   activePeriodsByGroupId,
   roleIds,
   hasNightAuthorization,
-  fixedControllersByGroupId,
+  fixedControllersByPeriodId,
 }) {
   const errors = [];
   const employeesById = buildLookupById(employees);
@@ -1155,6 +1681,27 @@ function validateGeneratedPlanningBeforeCommit({
     );
   });
 
+  Object.entries(planningByEmployeeDate).forEach(([key, rows]) => {
+    const [employeId, date] = key.split("|");
+    const hasMatin = rows.some((row) =>
+      idsMatch(row.periode_id, roleIds.matinPeriodId)
+    );
+    const hasSoir = rows.some((row) =>
+      idsMatch(row.periode_id, roleIds.soirPeriodId)
+    );
+
+    if (!hasMatin || !hasSoir) {
+      return;
+    }
+
+    const employee = employeesById[employeId];
+
+    addValidationError(
+      errors,
+      `${date}: ${employee ? formatEmployeeName(employee) : employeId} is assigned to both Matin and Soir.`
+    );
+  });
+
   for (const date of weekDates) {
     const nightRows = nightRowsByDate[date] || [];
 
@@ -1166,7 +1713,143 @@ function validateGeneratedPlanningBeforeCommit({
     }
   }
 
-  for (const group of groups) {
+  for (const periodId of [roleIds.matinPeriodId, roleIds.soirPeriodId]) {
+    const period = periodsById[periodId];
+    const shiftName = period?.nom || periodId;
+    const fixedController = fixedControllersByPeriodId[periodId];
+    const expectedFixedControlName = getExpectedFixedControlNameForPeriod(shiftName);
+    const activeGroup = groups.find((group) =>
+      idsMatch(activePeriodsByGroupId[group.id], periodId)
+    );
+
+    if (!activeGroup) {
+      addValidationError(
+        errors,
+        `${shiftName}: missing active normal group for period ${periodId}.`
+      );
+      continue;
+    }
+
+    for (const date of weekDates) {
+      const shiftRows = planningRows.filter(
+        (row) =>
+          row._date === date &&
+          Number(row.periode_id) === Number(periodId)
+      );
+      const controlRows = shiftRows.filter(
+        (row) => Number(row.role_travail_id) === Number(roleIds.controle)
+      );
+
+      if (shiftRows.length < 3) {
+        addValidationError(
+          errors,
+          `${date} ${shiftName}: expected at least 3 employees, found ${shiftRows.length}.`
+        );
+      }
+
+      if (controlRows.length !== 1) {
+        addValidationError(
+          errors,
+          `${date} ${shiftName}: expected exactly one Contrôle, found ${controlRows.length}.`
+        );
+        continue;
+      }
+
+      const controlRow = controlRows[0];
+      const controlEmployee = employeesById[controlRow.employe_id];
+
+      if (!controlEmployee || !fixedController) {
+        continue;
+      }
+
+      if (
+        normalizeText(shiftName) === normalizeText("Matin") &&
+        employeeMatchesName(controlEmployee, SOIR_FIXED_CONTROL_NAME)
+      ) {
+        addValidationError(
+          errors,
+          `${date} Matin: SAID cannot be Matin Contrôle.`
+        );
+      }
+
+      if (
+        normalizeText(shiftName) === normalizeText("Soir") &&
+        employeeMatchesName(controlEmployee, MATIN_FIXED_CONTROL_NAME)
+      ) {
+        addValidationError(
+          errors,
+          `${date} Soir: MONCEF cannot be Soir Contrôle.`
+        );
+      }
+
+      const restEmployeeIds = new Set(
+        reposRows
+          .filter((row) => row._date === date)
+          .map((row) => row.employe_id)
+      );
+      const nightEmployee = (nightRowsByDate[date] || [])
+        .map((row) => employeesById[row.employe_id])
+        .find(Boolean);
+      const fixedControllerUnavailable =
+        employeeIdSetHas(restEmployeeIds, fixedController.id) ||
+        (nightEmployee && idsMatch(nightEmployee.id, fixedController.id));
+
+      if (!fixedControllerUnavailable) {
+        if (!idsMatch(controlEmployee.id, fixedController.id)) {
+          addValidationError(
+            errors,
+            `${date} ${shiftName}: expected ${expectedFixedControlName} as Contrôle, found ${formatEmployeeName(controlEmployee)}.`
+          );
+        }
+
+        continue;
+      }
+
+      const assignedElsewhereIds = new Set(
+        planningRows
+          .filter(
+            (row) =>
+              row._date === date &&
+              !idsMatch(row.periode_id, periodId)
+          )
+          .map((row) => row.employe_id)
+      );
+      const activeShiftEmployees = buildActiveShiftNormalEmployees({
+        activeGroup,
+        employees,
+        nightEmployee,
+        restEmployeeIds,
+        assignedEmployeeIds: assignedElsewhereIds,
+      });
+      const isActiveShiftEmployee = activeShiftEmployees.some((employee) =>
+        idsMatch(employee.id, controlEmployee.id)
+      );
+
+      if (!isActiveShiftEmployee) {
+        addValidationError(
+          errors,
+          `${date} ${shiftName}: Contrôle replacement ${formatEmployeeName(controlEmployee)} is not from active normal team ${activeGroup.nom}.`
+        );
+      }
+
+      if (
+        !isValidControlReplacement({
+          employee: controlEmployee,
+          fixedController,
+          nightEmployee,
+          restEmployeeIds,
+          assignedEmployeeIds: assignedElsewhereIds,
+        })
+      ) {
+        addValidationError(
+          errors,
+          `${date} ${shiftName}: invalid Contrôle replacement ${formatEmployeeName(controlEmployee)}.`
+        );
+      }
+    }
+  }
+
+  for (const group of []) {
     const activePeriodId = activePeriodsByGroupId[group.id];
 
     if (!activePeriodId) {
@@ -1299,6 +1982,8 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
   if (!isMonday(normalizedStartDate)) {
     throw new PlanningGenerationError(400, "startDate must be a Monday");
   }
+
+  getRestPatternWeekOffset(normalizedStartDate);
 
   const derivedWeekNumber = getPlanningWeekNumber(normalizedStartDate);
 
@@ -1447,13 +2132,23 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
       nightCandidates,
       warnings
     );
+    const globalPreassignedReposKeys = buildReposKeySet(nightBoundaryReposRows);
     const nightBoundaryReposByGroupId = groupReposRowsByGroupId(
       nightBoundaryReposRows,
       employeesById
     );
     const reposByGroupId = {};
-    const fixedControllersByGroupId = {};
     const generatedReposRows = [];
+    const reservedControlReplacementIdsByDate = new Map();
+    const activePeriodsByGroupId = {
+      [groupA.id]: rotationType === 1 ? matin.id : soir.id,
+      [groupB.id]: rotationType === 1 ? soir.id : matin.id,
+    };
+    const fixedControllersByPeriodId = buildFixedControllersByPeriodId({
+      employees,
+      matin,
+      soir,
+    });
 
     for (const group of [groupA, groupB]) {
       const groupEmployees = employeesByGroupId[group.id] || [];
@@ -1469,37 +2164,51 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
         group,
         groupEmployees,
         weekDates,
+        startDate: normalizedStartDate,
         weekNumber: derivedWeekNumber,
         nightAssignmentsByDate,
         preassignedReposRows: nightBoundaryReposByGroupId[group.id] || [],
+        globalPreassignedReposRows: nightBoundaryReposRows,
+        globalPreassignedReposKeys,
+        existingReposRows: generatedReposRows,
+        controlContext: {
+          groups: [groupA, groupB],
+          employees,
+          employeesByGroupId,
+          activePeriodsByGroupId,
+          fixedControllersByPeriodId,
+          reservedControlReplacementIdsByDate,
+          globalPreassignedReposRows: nightBoundaryReposRows,
+          roleIds: {
+            matinPeriodId: matin.id,
+            soirPeriodId: soir.id,
+          },
+        },
         warnings,
       });
 
       reposByGroupId[group.id] = restAssignments.reposByDate;
-      fixedControllersByGroupId[group.id] = restAssignments.fixedController;
       generatedReposRows.push(...restAssignments.reposRows);
     }
 
-    const activePeriodsByGroupId = {
-      [groupA.id]: rotationType === 1 ? matin.id : soir.id,
-      [groupB.id]: rotationType === 1 ? soir.id : matin.id,
-    };
-    const generatedPlanningRows = buildPlanningRows({
+    const generatedPlanningRows = buildShiftFixedPlanningRows({
       groups: [groupA, groupB],
+      employees,
       employeesByGroupId,
       weekDates,
-      weekNumber: derivedWeekNumber,
       activePeriodsByGroupId,
       roleIds: {
         controle: controle.id,
         guichet: guichet.id,
         caisse: caisse.id,
         guichetCaisse: guichetCaisse.id,
+        matinPeriodId: matin.id,
+        soirPeriodId: soir.id,
         nuitPeriodId: nuit.id,
       },
       nightAssignmentsByDate,
       reposByGroupId,
-      fixedControllersByGroupId,
+      fixedControllersByPeriodId,
       warnings,
     });
 
@@ -1517,10 +2226,12 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
         guichet: guichet.id,
         caisse: caisse.id,
         guichetCaisse: guichetCaisse.id,
+        matinPeriodId: matin.id,
+        soirPeriodId: soir.id,
         nuitPeriodId: nuit.id,
       },
       hasNightAuthorization,
-      fixedControllersByGroupId,
+      fixedControllersByPeriodId,
     });
 
     if (generatedReposRows.length > 0) {

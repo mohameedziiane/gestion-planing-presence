@@ -26,11 +26,22 @@ function formatDateWithOffset(offset: number) {
   const date = new Date();
   date.setDate(date.getDate() + offset);
 
+  return formatDateValue(date);
+}
+
+function formatDateValue(date: Date) {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function addDaysToDate(dateValue: string, offset: number) {
+  const date = new Date(`${dateValue}T00:00:00`);
+  date.setDate(date.getDate() + offset);
+
+  return formatDateValue(date);
 }
 
 function normalizeText(value: unknown) {
@@ -47,6 +58,22 @@ function getString(row: NestedRecord, keys: string[]) {
 
     if (typeof value === "string" && value.trim()) {
       return value.trim();
+    }
+  }
+
+  return "";
+}
+
+function getValueAsString(row: NestedRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = row[key];
+
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+
+    if (typeof value === "number") {
+      return String(value);
     }
   }
 
@@ -158,6 +185,82 @@ function getReposType(row: ApiRow) {
   return getString(row, ["type", "repos_type", "type_repos"]) || "Repos";
 }
 
+function getEmployeeMatchKey(row: ApiRow) {
+  const idKeys = ["employe_id", "employee_id", "id_employe"];
+  const directId = getValueAsString(row, idKeys);
+
+  if (directId) {
+    return `id:${directId}`;
+  }
+
+  const employe = getNested(row, "employe");
+  const nestedId = employe ? getValueAsString(employe, ["id", ...idKeys]) : "";
+
+  if (nestedId) {
+    return `id:${nestedId}`;
+  }
+
+  const employeeName = normalizeText(getEmployeeName(row));
+
+  return employeeName ? `name:${employeeName}` : "";
+}
+
+function hasReposForEmployee(rows: ApiRow[], row: ApiRow) {
+  const employeeKey = getEmployeeMatchKey(row);
+
+  return Boolean(
+    employeeKey && rows.some((candidate) => getEmployeeMatchKey(candidate) === employeeKey)
+  );
+}
+
+function getReposProgress(row: ApiRow, previousRows: ApiRow[], nextRows: ApiRow[]) {
+  const isTwoDayRepos = normalizeText(getReposType(row)).includes("2");
+
+  if (!isTwoDayRepos) {
+    return {
+      currentDay: 1,
+      totalDays: 1,
+      progress: 100,
+    };
+  }
+
+  const isSecondDay = hasReposForEmployee(previousRows, row);
+
+  return {
+    currentDay: isSecondDay ? 2 : 1,
+    totalDays: 2,
+    progress: isSecondDay ? 100 : 50,
+    isContinuous: isSecondDay || hasReposForEmployee(nextRows, row),
+  };
+}
+
+function ReposProgressBar({
+  currentDay,
+  totalDays,
+  progress,
+}: {
+  currentDay: number;
+  totalDays: number;
+  progress: number;
+}) {
+  return (
+    <div className="mt-3">
+      <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] font-medium">
+        <span className="text-[#acbdc5]">
+          Repos {currentDay}/{totalDays} jour{totalDays > 1 ? "s" : ""}
+        </span>
+        <span className="text-[#1AB6FF]">{progress}%</span>
+      </div>
+      <div className="h-1.5 overflow-hidden rounded-[2px] bg-[rgba(172,189,197,0.15)]">
+        <div
+          className="h-full rounded-[2px] bg-[#1AB6FF]"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
 function groupRowsByShift(rows: ApiRow[]) {
   return shifts.reduce<Record<string, ApiRow[]>>((result, shift) => {
     result[shift] = rows.filter(
@@ -241,6 +344,8 @@ export default function AdminPage() {
   const [selectedDay, setSelectedDay] = useState<DayOption>("today");
   const [planningRows, setPlanningRows] = useState<ApiRow[]>([]);
   const [reposRows, setReposRows] = useState<ApiRow[]>([]);
+  const [previousReposRows, setPreviousReposRows] = useState<ApiRow[]>([]);
+  const [nextReposRows, setNextReposRows] = useState<ApiRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -287,7 +392,9 @@ export default function AdminPage() {
       setError("");
 
       try {
-        const [planning, repos] = await Promise.all([
+        const previousDate = addDaysToDate(selectedDate, -1);
+        const nextDate = addDaysToDate(selectedDate, 1);
+        const [planning, repos, previousRepos, nextRepos] = await Promise.all([
           fetchProtectedRows(
             `http://localhost:5000/api/planning/date/${selectedDate}`,
             authToken
@@ -296,6 +403,14 @@ export default function AdminPage() {
             `http://localhost:5000/api/repos/date/${selectedDate}`,
             authToken
           ),
+          fetchProtectedRows(
+            `http://localhost:5000/api/repos/date/${previousDate}`,
+            authToken
+          ).catch(() => []),
+          fetchProtectedRows(
+            `http://localhost:5000/api/repos/date/${nextDate}`,
+            authToken
+          ).catch(() => []),
         ]);
 
         if (!isActive) {
@@ -304,10 +419,14 @@ export default function AdminPage() {
 
         setPlanningRows(planning);
         setReposRows(repos);
+        setPreviousReposRows(previousRepos);
+        setNextReposRows(nextRepos);
       } catch (fetchError) {
         if (isActive) {
           setPlanningRows([]);
           setReposRows([]);
+          setPreviousReposRows([]);
+          setNextReposRows([]);
           setError(
             fetchError instanceof Error
               ? fetchError.message
@@ -400,19 +519,35 @@ export default function AdminPage() {
 
         <div className="mb-8 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <section>
-            <label className="mb-3 flex w-fit flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+            <label className="mb-3 flex w-fit flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#acbdc5]">
               Date
-              <select
-                value={selectedDay}
-                onChange={(event) => setSelectedDay(event.target.value as DayOption)}
-                className="h-10 min-w-44 border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-3 text-sm font-semibold text-[#e1e3e4] outline-none transition hover:border-[#169CDC] focus:border-[#1AB6FF]"
-              >
-                {dayOptions.map((option) => (
-                  <option key={option.value} value={option.value}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <span className="relative inline-flex">
+                <select
+                  value={selectedDay}
+                  onChange={(event) => setSelectedDay(event.target.value as DayOption)}
+                  className="h-7 min-w-[108px] appearance-none rounded-[3px] border border-[rgba(172,189,197,0.12)] bg-[#334149] pl-2.5 pr-7 text-xs font-medium leading-none text-[#e1e3e4] outline-none transition hover:border-[rgba(172,189,197,0.24)] hover:bg-[#303d44] focus:border-[#1AB6FF] focus:bg-[#303d44] focus:ring-1 focus:ring-[#1AB6FF]/25"
+                >
+                  {dayOptions.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[#acbdc5]">
+                  <svg
+                    aria-hidden="true"
+                    viewBox="0 0 12 12"
+                    className="h-3 w-3"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.8"
+                  >
+                    <path d="m3 4.5 3 3 3-3" />
+                  </svg>
+                </span>
+              </span>
             </label>
 
             <div className="border border-[rgba(172,189,197,0.15)] bg-[#38474e]">
@@ -434,7 +569,7 @@ export default function AdminPage() {
             </div>
           </section>
 
-          <aside className="border border-l-4 border-[rgba(172,189,197,0.15)] border-l-[#1AB6FF] bg-[#38474e] p-4 sm:p-5 lg:mt-[80px]">
+          <aside className="border border-l-4 border-[rgba(172,189,197,0.15)] border-l-[#1AB6FF] bg-[#38474e] px-4 pb-4 pt-1 sm:px-5 sm:pb-5 sm:pt-1 lg:mt-[62px]">
             <div className="mb-4 flex items-start justify-between gap-3">
               <div>
                 <h2 className="text-xl font-semibold text-[#e1e3e4]">
@@ -463,19 +598,32 @@ export default function AdminPage() {
               </p>
             ) : (
               <div className="space-y-3">
-                {reposRows.map((row, index) => (
-                  <article
-                    key={row.id || `repos-${index}`}
-                    className="border border-[rgba(172,189,197,0.15)] bg-[#334149] p-3"
-                  >
-                    <h3 className="text-sm font-semibold text-[#e1e3e4]">
-                      {getEmployeeName(row) || "Employé non défini"}
-                    </h3>
-                    <p className="mt-1 text-sm text-[#acbdc5]">
-                      Type: {getReposType(row)}
-                    </p>
-                  </article>
-                ))}
+                {reposRows.map((row, index) => {
+                  const progressInfo = getReposProgress(
+                    row,
+                    previousReposRows,
+                    nextReposRows
+                  );
+
+                  return (
+                    <article
+                      key={row.id || `repos-${index}`}
+                      className="border border-[rgba(172,189,197,0.15)] bg-[#334149] p-3"
+                    >
+                      <h3 className="text-sm font-semibold text-[#e1e3e4]">
+                        {getEmployeeName(row) || "Employé non défini"}
+                      </h3>
+                      <p className="mt-1 text-sm text-[#acbdc5]">
+                        Type: {getReposType(row)}
+                      </p>
+                      <ReposProgressBar
+                        currentDay={progressInfo.currentDay}
+                        totalDays={progressInfo.totalDays}
+                        progress={progressInfo.progress}
+                      />
+                    </article>
+                  );
+                })}
               </div>
             )}
           </aside>

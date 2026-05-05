@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 
 type NestedRecord = Record<string, unknown>;
 type ApiRow = Record<string, unknown> & {
@@ -26,14 +26,20 @@ type GenerationResult = {
 };
 
 const shifts = ["Matin", "Soir", "Nuit"];
-const PLANNING_WEEK_ANCHOR_DATE = "2026-05-04";
+const PLANNING_WEEK_ANCHOR_DATE = "2026-04-27";
+const MATIN_GROUPE_A_ORDER = ["FATIHA", "HAYAT", "MONCEF", "AYOUB", "YOUNESS"];
+const SOIR_GROUPE_B_ORDER = ["ABIRE", "RAHMA", "SAID", "SABER", "TAHRA"];
+const MATIN_GROUPE_B_ORDER = ["ABIRE", "RAHMA", "MONCEF", "SABER", "TAHRA"];
+const SOIR_GROUPE_A_ORDER = ["FATIHA", "HAYAT", "SAID", "AYOUB", "YOUNESS"];
+const GROUPE_A_MARKERS = ["FATIHA", "HAYAT", "AYOUB", "YOUNESS"];
+const GROUPE_B_MARKERS = ["ABIRE", "RAHMA", "SABER", "TAHRA"];
 
-function getNextMondayOrToday() {
+function getCurrentWeekMonday() {
   const date = new Date();
   const day = date.getDay();
-  const daysUntilMonday = day === 1 ? 0 : (8 - day) % 7 || 1;
+  const daysSinceMonday = day === 0 ? 6 : day - 1;
 
-  date.setDate(date.getDate() + daysUntilMonday);
+  date.setDate(date.getDate() - daysSinceMonday);
 
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, "0");
@@ -84,6 +90,65 @@ function normalizeText(value: unknown) {
     .replace(/[\u0300-\u036f]/g, "")
     .trim()
     .toLowerCase();
+}
+
+function getNormalizedFirstName(name: string) {
+  return normalizeText(name).split(/\s+/)[0]?.toUpperCase() || "";
+}
+
+function hasAnyEmployee(employees: { name: string }[], preferredNames: string[]) {
+  const employeeNames = employees.map((employee) =>
+    getNormalizedFirstName(employee.name)
+  );
+
+  return preferredNames.some((name) => employeeNames.includes(name));
+}
+
+function getPreferredEmployeeOrder(
+  shift: "Matin" | "Soir",
+  employees: { name: string }[]
+) {
+  if (shift === "Matin") {
+    if (hasAnyEmployee(employees, GROUPE_B_MARKERS)) {
+      return MATIN_GROUPE_B_ORDER;
+    }
+
+    if (hasAnyEmployee(employees, GROUPE_A_MARKERS)) {
+      return MATIN_GROUPE_A_ORDER;
+    }
+
+    return MATIN_GROUPE_A_ORDER;
+  }
+
+  if (hasAnyEmployee(employees, GROUPE_B_MARKERS)) {
+    return SOIR_GROUPE_B_ORDER;
+  }
+
+  if (hasAnyEmployee(employees, GROUPE_A_MARKERS)) {
+    return SOIR_GROUPE_A_ORDER;
+  }
+
+  return SOIR_GROUPE_A_ORDER;
+}
+
+function sortEmployeesByPreferredOrder<T extends { name: string }>(
+  employees: T[],
+  shift: "Matin" | "Soir"
+) {
+  const preferredOrder = getPreferredEmployeeOrder(shift, employees);
+
+  return [...employees].sort((a, b) => {
+    const firstIndex = preferredOrder.indexOf(getNormalizedFirstName(a.name));
+    const secondIndex = preferredOrder.indexOf(getNormalizedFirstName(b.name));
+    const firstRank = firstIndex === -1 ? Number.MAX_SAFE_INTEGER : firstIndex;
+    const secondRank = secondIndex === -1 ? Number.MAX_SAFE_INTEGER : secondIndex;
+
+    if (firstRank !== secondRank) {
+      return firstRank - secondRank;
+    }
+
+    return a.name.localeCompare(b.name);
+  });
 }
 
 function getString(row: NestedRecord, keys: string[]) {
@@ -217,6 +282,30 @@ function getGroupName(row: ApiRow) {
   );
 }
 
+function getEmployeeKey(row: ApiRow) {
+  const employe = getNested(row, "employe");
+  const idValue =
+    row.employe_id ||
+    row.employee_id ||
+    row.id_employe ||
+    employe?.id ||
+    employe?.employe_id ||
+    employe?.employee_id ||
+    employe?.id_employe;
+
+  if (typeof idValue === "number" || typeof idValue === "string") {
+    const normalizedId = String(idValue).trim();
+
+    if (normalizedId) {
+      return `id:${normalizedId}`;
+    }
+  }
+
+  const employeeName = getEmployeeName(row);
+
+  return employeeName ? `name:${normalizeText(employeeName)}` : "";
+}
+
 function getReposType(row: ApiRow) {
   return getString(row, ["type", "repos_type"]) || "Repos";
 }
@@ -245,6 +334,93 @@ function addDays(dateValue: string, offset: number) {
   const day = String(date.getDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function getWeekDatesFromStart(startDate: string) {
+  return Array.from({ length: 7 }, (_, index) => addDays(startDate, index)).filter(Boolean);
+}
+
+function getRowsFromPayload(payload: unknown, keys: string[]) {
+  if (Array.isArray(payload)) {
+    return payload as ApiRow[];
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const record = payload as Record<string, unknown>;
+
+  for (const key of keys) {
+    const value = record[key];
+
+    if (Array.isArray(value)) {
+      return value as ApiRow[];
+    }
+  }
+
+  return [];
+}
+
+async function fetchRowsByDate(
+  url: string,
+  token: string,
+  payloadKeys: string[]
+) {
+  const response = await fetch(url, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (response.status === 404) {
+    return [];
+  }
+
+  const text = await response.text();
+  const payload = text ? (JSON.parse(text) as unknown) : null;
+
+  if (!response.ok) {
+    throw new Error("Fetch failed");
+  }
+
+  return getRowsFromPayload(payload, payloadKeys);
+}
+
+async function fetchExistingWeekPlanning(
+  startDate: string,
+  token: string,
+  weekNumber: number
+): Promise<GenerationResult> {
+  const weekDays = getWeekDatesFromStart(startDate);
+  const planningRequests = weekDays.map((date) =>
+    fetchRowsByDate(
+      `http://localhost:5000/api/planning/date/${date}`,
+      token,
+      ["planning", "data", "rows"]
+    )
+  );
+  const reposRequests = weekDays.map((date) =>
+    fetchRowsByDate(
+      `http://localhost:5000/api/repos/date/${date}`,
+      token,
+      ["repos", "data", "rows"]
+    )
+  );
+  const [planningByDay, reposByDay] = await Promise.all([
+    Promise.all(planningRequests),
+    Promise.all(reposRequests),
+  ]);
+
+  return {
+    week: {
+      startDate,
+      endDate: weekDays[6] || startDate,
+      weekNumber,
+    },
+    planning: planningByDay.flat(),
+    repos: reposByDay.flat(),
+  };
 }
 
 function buildWeekDays(
@@ -296,6 +472,10 @@ function getCellClass(status: string) {
 
   if (normalized.includes("controle")) {
     return "border-yellow-300/25 bg-yellow-500/10 font-bold text-yellow-100";
+  }
+
+  if (normalized === "-") {
+    return "border-[rgba(172,189,197,0.12)] bg-[#303d44] text-[#7f929b]";
   }
 
   return "border-[rgba(172,189,197,0.15)] bg-[#334149] text-[#e1e3e4]";
@@ -350,84 +530,76 @@ function WeeklyPlanningPreview({
     "SAMEDI",
     "DIMANCHE",
   ];
-  const rowsByShift = groupPlanningByShift(planningRows);
   const planningByEmployeeDate = new Map<string, ApiRow>();
   const reposByEmployeeDate = new Map<string, ApiRow>();
+  const nightByEmployeeDate = new Map<string, ApiRow>();
   const nightByDate = new Map<string, ApiRow>();
 
   planningRows.forEach((row) => {
-    const employeeName = getEmployeeName(row);
+    const employeeKey = getEmployeeKey(row);
     const date = getNormalizedDate(row);
+    const shift = normalizeText(getShiftName(row));
 
-    if (!employeeName || !date) {
+    if (!employeeKey || !date) {
       return;
     }
 
-    planningByEmployeeDate.set(`${normalizeText(employeeName)}|${date}`, row);
+    planningByEmployeeDate.set(
+      `${employeeKey}|${date}|${shift}`,
+      row
+    );
 
-    if (normalizeText(getShiftName(row)) === "nuit") {
+    if (shift === "nuit") {
+      nightByEmployeeDate.set(`${employeeKey}|${date}`, row);
       nightByDate.set(date, row);
     }
   });
 
   reposRows.forEach((row) => {
-    const employeeName = getEmployeeName(row);
+    const employeeKey = getEmployeeKey(row);
     const date = getNormalizedDate(row);
 
-    if (!employeeName || !date) {
+    if (!employeeKey || !date) {
       return;
     }
 
-    reposByEmployeeDate.set(`${normalizeText(employeeName)}|${date}`, row);
+    reposByEmployeeDate.set(`${employeeKey}|${date}`, row);
   });
 
   function getSectionEmployees(shift: "Matin" | "Soir") {
-    const sectionGroup = getGroupName(rowsByShift[shift][0] || {});
-    const employees = new Map<string, { name: string; group: string }>();
+    const employees = new Map<string, { key: string; name: string; group: string }>();
 
     planningRows.forEach((row) => {
+      const employeeKey = getEmployeeKey(row);
       const name = getEmployeeName(row);
       const group = getGroupName(row);
       const currentShift = normalizeText(getShiftName(row));
       const matchesShift = normalizeText(shift) === currentShift;
-      const matchesGroup =
-        sectionGroup &&
-        normalizeText(sectionGroup) !== "groupe non defini" &&
-        normalizeText(group) === normalizeText(sectionGroup);
 
-      if (name && (matchesShift || (matchesGroup && currentShift !== "nuit"))) {
-        employees.set(normalizeText(name), { name, group });
+      if (employeeKey && name && matchesShift) {
+        employees.set(employeeKey, { key: employeeKey, name, group });
       }
     });
 
-    reposRows.forEach((row) => {
-      const name = getEmployeeName(row);
-      const group = getGroupName(row);
-      const matchesGroup =
-        sectionGroup &&
-        normalizeText(sectionGroup) !== "groupe non defini" &&
-        normalizeText(group) === normalizeText(sectionGroup);
-
-      if (name && matchesGroup) {
-        employees.set(normalizeText(name), { name, group });
-      }
-    });
-
-    return Array.from(employees.values()).sort((a, b) =>
-      a.name.localeCompare(b.name)
-    );
+    return sortEmployeesByPreferredOrder(Array.from(employees.values()), shift);
   }
 
-  function getEmployeeCell(employeeName: string, date: string) {
-    const key = `${normalizeText(employeeName)}|${date}`;
-    const planningRow = planningByEmployeeDate.get(key);
+  function getEmployeeCell(employeeKey: string, date: string, shift: "Matin" | "Soir") {
+    const employeeDateKey = `${employeeKey}|${date}`;
+    const planningKey = `${employeeDateKey}|${normalizeText(shift)}`;
+
+    if (reposByEmployeeDate.has(employeeDateKey)) {
+      return "REPOS";
+    }
+
+    if (nightByEmployeeDate.has(employeeDateKey)) {
+      return "NUIT";
+    }
+
+    const planningRow = planningByEmployeeDate.get(planningKey);
 
     if (planningRow) {
       return getRoleStatus(planningRow);
-    }
-
-    if (reposByEmployeeDate.has(key)) {
-      return "REPOS";
     }
 
     return "-";
@@ -441,7 +613,7 @@ function WeeklyPlanningPreview({
         <tr className="bg-[#2f3d44]">
           <th
             colSpan={8}
-            className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-left text-sm font-bold uppercase tracking-wide text-[#1AB6FF]"
+            className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-center text-sm font-bold uppercase tracking-wide text-[#1AB6FF]"
           >
             {shift.toUpperCase()}
           </th>
@@ -467,7 +639,7 @@ function WeeklyPlanningPreview({
                 </span>
               </th>
               {weekDays.map((date) => {
-                const status = getEmployeeCell(employee.name, date);
+                const status = getEmployeeCell(employee.key, date, shift);
 
                 return (
                   <td
@@ -527,7 +699,7 @@ function WeeklyPlanningPreview({
               <tr className="bg-[#2f3d44]">
                 <th
                   colSpan={8}
-                  className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-left text-sm font-bold uppercase tracking-wide text-[#1AB6FF]"
+                  className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-center text-sm font-bold uppercase tracking-wide text-[#1AB6FF]"
                 >
                   NUIT
                 </th>
@@ -565,47 +737,133 @@ function WeeklyPlanningPreview({
 function ReposPreview({ rows }: { rows: ApiRow[] }) {
   const rowsByDate = groupReposByDate(rows);
   const dates = Object.keys(rowsByDate).sort();
+  const maxReposCount = Math.max(
+    1,
+    ...dates.map((date) => rowsByDate[date].length)
+  );
+  const reposTypeCounts = rows.reduce<{ oneDay: number; twoDays: number }>(
+    (counts, row) => {
+      const normalizedType = normalizeText(getReposType(row)).replace(/\s/g, "");
+
+      if (normalizedType === "1j") {
+        counts.oneDay += 1;
+      }
+
+      if (normalizedType === "2j") {
+        counts.twoDays += 1;
+      }
+
+      return counts;
+    },
+    { oneDay: 0, twoDays: 0 }
+  );
+  const stats = [
+    { label: "Total repos", value: rows.length },
+    { label: "Jours avec repos", value: dates.length },
+    { label: "Repos 1j", value: reposTypeCounts.oneDay },
+    { label: "Repos 2j", value: reposTypeCounts.twoDays },
+  ];
+
+  function getReposTypeBadgeClass(type: string) {
+    const normalizedType = normalizeText(type).replace(/\s/g, "");
+
+    if (normalizedType === "2j") {
+      return "border-cyan-300/20 bg-cyan-400/10 text-cyan-100";
+    }
+
+    return "border-emerald-300/20 bg-emerald-400/10 text-emerald-100";
+  }
 
   return (
-    <section>
-      <h2 className="mb-4 text-xl font-semibold text-[#e1e3e4]">
-        Aperçu des repos générés
-      </h2>
+    <section className="space-y-4">
+      <div>
+        <h2 className="text-xl font-semibold text-[#e1e3e4]">
+          Aperçu des repos générés
+        </h2>
+      </div>
       {dates.length === 0 ? (
         <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
           Aucun repos retourné.
         </p>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2">
-          {dates.map((date) => (
-            <section
-              key={date}
-              className="border border-[rgba(172,189,197,0.15)] bg-[#38474e]"
-            >
-              <div className="border-b border-[rgba(172,189,197,0.15)] px-4 py-3">
-                <h3 className="text-base font-semibold text-[#e1e3e4]">{date}</h3>
-                <p className="text-xs text-[#acbdc5]">
-                  {rowsByDate[date].length} repos
+        <>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {stats.map((stat) => (
+              <article
+                key={stat.label}
+                className="rounded border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4"
+              >
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+                  {stat.label}
                 </p>
-              </div>
-              <div className="space-y-3 p-4">
-                {rowsByDate[date].map((row, index) => (
-                  <article
-                    key={row.id || `${date}-${index}`}
-                    className="border border-[rgba(172,189,197,0.15)] bg-[#334149] p-3"
-                  >
-                    <h4 className="text-sm font-semibold text-[#e1e3e4]">
-                      {getEmployeeName(row) || "Employé non défini"}
-                    </h4>
-                    <p className="mt-1 text-sm text-[#acbdc5]">
-                      Type: {getReposType(row)}
-                    </p>
-                  </article>
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
+                <p className="mt-2 text-2xl font-semibold text-[#e1e3e4]">
+                  {stat.value}
+                </p>
+              </article>
+            ))}
+          </div>
+
+          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+            {dates.map((date) => {
+              const reposForDate = rowsByDate[date];
+              const progressWidth = `${Math.round(
+                (reposForDate.length / maxReposCount) * 100
+              )}%`;
+
+              return (
+                <section
+                  key={date}
+                  className="rounded border border-[rgba(172,189,197,0.15)] bg-[#38474e]"
+                >
+                  <div className="border-b border-[rgba(172,189,197,0.15)] px-4 py-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <h3 className="text-base font-semibold text-[#e1e3e4]">
+                        {date}
+                      </h3>
+                      <span className="rounded border border-[rgba(26,182,255,0.22)] bg-[#1AB6FF]/10 px-2.5 py-1 text-xs font-semibold text-[#bdeaff]">
+                        {reposForDate.length} repos
+                      </span>
+                    </div>
+                    <div className="mt-3 h-1.5 overflow-hidden rounded bg-[#334149]">
+                      <div
+                        className="h-full rounded bg-[#1AB6FF]"
+                        style={{ width: progressWidth }}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2 p-4">
+                    {reposForDate.map((row, index) => {
+                      const reposType = getReposType(row);
+
+                      return (
+                        <article
+                          key={row.id || `${date}-${index}`}
+                          className="rounded border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3"
+                        >
+                          <div className="flex items-center justify-between gap-3">
+                            <h4 className="min-w-0 text-sm font-semibold text-[#e1e3e4]">
+                              {getEmployeeName(row) || "Employé non défini"}
+                            </h4>
+                            <span
+                              className={`shrink-0 rounded border px-2 py-0.5 text-xs font-semibold ${getReposTypeBadgeClass(
+                                reposType
+                              )}`}
+                            >
+                              {reposType}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-xs text-[#acbdc5]">
+                            Type: {reposType}
+                          </p>
+                        </article>
+                      );
+                    })}
+                  </div>
+                </section>
+              );
+            })}
+          </div>
+        </>
       )}
     </section>
   );
@@ -613,9 +871,12 @@ function ReposPreview({ rows }: { rows: ApiRow[] }) {
 
 export default function AdminPlanningPage() {
   const router = useRouter();
-  const [startDate, setStartDate] = useState(getNextMondayOrToday);
+  const fetchRequestId = useRef(0);
+  const [startDate, setStartDate] = useState(getCurrentWeekMonday);
   const [overwrite, setOverwrite] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingExisting, setIsFetchingExisting] = useState(false);
+  const [hasFetchedExistingWeek, setHasFetchedExistingWeek] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [backendErrors, setBackendErrors] = useState<string[]>([]);
@@ -649,10 +910,87 @@ export default function AdminPlanningPage() {
   }, [result]);
 
   useEffect(() => {
-    if (!localStorage.getItem("token")) {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
       router.push("/");
+      return;
     }
-  }, [router]);
+
+    if (calculatedWeekNumber === null) {
+      setResult(null);
+      setHasFetchedExistingWeek(false);
+      setIsFetchingExisting(false);
+      return;
+    }
+
+    const requestId = fetchRequestId.current + 1;
+    fetchRequestId.current = requestId;
+
+    setIsFetchingExisting(true);
+    setHasFetchedExistingWeek(false);
+    setResult(null);
+    setSuccessMessage("");
+    setErrorMessage("");
+    setBackendErrors([]);
+
+    fetchExistingWeekPlanning(startDate, token, calculatedWeekNumber)
+      .then((existingResult) => {
+        if (fetchRequestId.current !== requestId) {
+          return;
+        }
+
+        setResult(existingResult);
+        setHasFetchedExistingWeek(true);
+      })
+      .catch(() => {
+        if (fetchRequestId.current !== requestId) {
+          return;
+        }
+
+        setResult(null);
+        setHasFetchedExistingWeek(false);
+        setErrorMessage("Impossible de charger le planning de la semaine.");
+      })
+      .finally(() => {
+        if (fetchRequestId.current !== requestId) {
+          return;
+        }
+
+        setIsFetchingExisting(false);
+      });
+  }, [calculatedWeekNumber, router, startDate]);
+
+  function getSelectedWeek() {
+    const weekDays = getWeekDatesFromStart(startDate);
+
+    return {
+      startDate,
+      endDate: weekDays[6] || startDate,
+      weekNumber: calculatedWeekNumber || undefined,
+    };
+  }
+
+  function renderEmptyWeekState() {
+    return (
+      <section className="rounded border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5">
+        <h2 className="text-base font-semibold text-[#e1e3e4]">
+          Aucun planning trouvé pour cette semaine.
+        </h2>
+        <p className="mt-1 text-sm text-[#acbdc5]">
+          Vous pouvez générer le planning avec le bouton ci-dessus.
+        </p>
+      </section>
+    );
+  }
+
+  function renderExistingWeekLoading() {
+    return (
+      <section className="rounded border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm font-semibold text-[#acbdc5]">
+        Chargement du planning de la semaine...
+      </section>
+    );
+  }
 
   function handleLogout() {
     localStorage.removeItem("token");
@@ -678,7 +1016,10 @@ export default function AdminPlanningPage() {
       return;
     }
 
+    fetchRequestId.current += 1;
     setIsLoading(true);
+    setIsFetchingExisting(false);
+    setHasFetchedExistingWeek(false);
     setSuccessMessage("");
     setErrorMessage("");
     setBackendErrors([]);
@@ -707,7 +1048,11 @@ export default function AdminPlanningPage() {
         return;
       }
 
-      setResult(data);
+      setResult({
+        ...data,
+        week: data.week || getSelectedWeek(),
+      });
+      setHasFetchedExistingWeek(true);
       setSuccessMessage("Planning généré avec succès.");
     } catch {
       setErrorMessage("Impossible de contacter le serveur backend.");
@@ -788,56 +1133,62 @@ export default function AdminPlanningPage() {
 
         <form
           onSubmit={handleSubmit}
-          className="mb-6 border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 sm:p-5"
+          className="mb-6 rounded border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 shadow-[0_16px_40px_rgba(17,24,28,0.14)] sm:p-5"
         >
-          <div className="grid gap-4 md:grid-cols-[1fr_260px]">
-            <label className="space-y-2 text-sm font-semibold text-[#acbdc5]">
-              <span>Date de début</span>
-              <input
-                type="date"
-                value={startDate}
-                onChange={(event) => setStartDate(event.target.value)}
-                className="h-11 w-full border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-sm text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
-                required
-              />
-              <span className="block text-xs font-normal text-[#acbdc5]">
-                La date doit être un lundi.
-              </span>
-              {startDateValidationMessage ? (
-                <span className="block text-xs font-semibold text-red-100">
-                  {startDateValidationMessage}
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch">
+            <div className="space-y-4">
+              <label className="block text-sm font-semibold text-[#acbdc5]">
+                <span className="mb-2 block text-xs uppercase tracking-wide">
+                  Date de début
                 </span>
-              ) : null}
-            </label>
+                <input
+                  type="date"
+                  value={startDate}
+                  onChange={(event) => setStartDate(event.target.value)}
+                  className="h-11 w-full rounded border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-sm font-semibold text-[#e1e3e4] outline-none transition placeholder:text-[#acbdc5] focus:border-[#1AB6FF] focus:ring-2 focus:ring-[#1AB6FF]/20"
+                  required
+                />
+                <span className="mt-2 block text-xs font-normal text-[#acbdc5]">
+                  La date doit être un lundi.
+                </span>
+                {startDateValidationMessage ? (
+                  <span className="mt-1 block text-xs font-semibold text-red-100">
+                    {startDateValidationMessage}
+                  </span>
+                ) : null}
+              </label>
 
-            <div className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-4 py-3">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
-                Semaine calculée automatiquement
-              </p>
-              <p className="mt-2 text-xl font-semibold text-[#e1e3e4]">
-                {calculatedWeekNumber ? `Semaine ${calculatedWeekNumber}` : "-"}
-              </p>
+              <label className="flex items-start gap-3 rounded border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3 text-sm font-semibold text-[#e1e3e4]">
+                <input
+                  type="checkbox"
+                  checked={overwrite}
+                  onChange={(event) => setOverwrite(event.target.checked)}
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#1AB6FF]"
+                />
+                <span className="leading-5">
+                  Remplacer le planning existant pour cette semaine
+                </span>
+              </label>
             </div>
-          </div>
 
-          <div className="mt-5 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <label className="flex items-center gap-2 text-sm font-semibold text-[#acbdc5]">
-              <input
-                type="checkbox"
-                checked={overwrite}
-                onChange={(event) => setOverwrite(event.target.checked)}
-                className="h-4 w-4 accent-[#1AB6FF]"
-              />
-              Remplacer le planning existant pour cette semaine
-            </label>
+            <div className="flex flex-col gap-4">
+              <div className="rounded border border-[rgba(172,189,197,0.15)] border-l-[#1AB6FF] bg-[#334149] px-4 py-4 lg:flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+                  Semaine calculée automatiquement
+                </p>
+                <p className="mt-3 text-2xl font-semibold text-[#e1e3e4]">
+                  {calculatedWeekNumber ? `Semaine ${calculatedWeekNumber}` : "-"}
+                </p>
+              </div>
 
-            <button
-              type="submit"
-              disabled={isLoading || calculatedWeekNumber === null}
-              className="h-11 bg-[#1AB6FF] px-5 text-sm font-bold text-white transition hover:bg-[#169CDC] disabled:cursor-not-allowed disabled:bg-[#169CDC]"
-            >
-              {isLoading ? "Génération..." : "Générer planning"}
-            </button>
+              <button
+                type="submit"
+                disabled={isLoading || calculatedWeekNumber === null}
+                className="h-11 rounded bg-[#1AB6FF] px-5 text-sm font-bold text-white shadow-[0_10px_24px_rgba(26,182,255,0.18)] transition hover:bg-[#169CDC] focus:outline-none focus:ring-2 focus:ring-[#1AB6FF]/35 focus:ring-offset-2 focus:ring-offset-[#38474e] disabled:cursor-not-allowed disabled:bg-[#169CDC] disabled:opacity-70"
+              >
+                {isLoading ? "Génération..." : "Générer planning"}
+              </button>
+            </div>
           </div>
         </form>
 
@@ -873,27 +1224,16 @@ export default function AdminPlanningPage() {
             </Alert>
           ) : null}
 
-          {result ? (
-            <>
-              <div className="grid gap-4 sm:grid-cols-2">
-                <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
-                    Lignes planning
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-[#e1e3e4]">
-                    {planningRows.length}
-                  </p>
-                </article>
-                <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
-                    Lignes repos
-                  </p>
-                  <p className="mt-2 text-2xl font-semibold text-[#e1e3e4]">
-                    {reposRows.length}
-                  </p>
-                </article>
-              </div>
+          {isFetchingExisting ? renderExistingWeekLoading() : null}
 
+          {!isFetchingExisting &&
+          hasFetchedExistingWeek &&
+          (!result || planningRows.length === 0)
+            ? renderEmptyWeekState()
+            : null}
+
+          {!isFetchingExisting && result && planningRows.length > 0 ? (
+            <>
               <WeeklyPlanningPreview
                 planningRows={planningRows}
                 reposRows={reposRows}
