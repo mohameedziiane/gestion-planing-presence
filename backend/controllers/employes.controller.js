@@ -1,3 +1,5 @@
+const bcrypt = require("bcryptjs");
+
 const db = require("../config/db");
 const {
   PlanningGenerationError,
@@ -24,6 +26,7 @@ const baseEmployeSelect = `
 `;
 
 const allowedSexes = ["Homme", "Femme"];
+const PASSWORD_SALT_ROUNDS = 10;
 
 function parseEmployeId(value) {
   const id = Number(value);
@@ -343,6 +346,133 @@ function validateEmployePlanningConfigUpdatePayload(payload, existingEmploye) {
   return { value: nextValue };
 }
 
+function validateEmployeCreationPayload(payload) {
+  const errors = [];
+  const value = {
+    prenom: String(payload.prenom || "").trim(),
+    nom: String(payload.nom || "").trim(),
+    email: String(payload.email || "").trim().toLowerCase(),
+    mot_de_passe: String(payload.mot_de_passe || ""),
+    sexe: String(payload.sexe || "").trim(),
+    groupe_id: Number(payload.groupe_id),
+    actif: normalizeActif(payload.actif, 1),
+    repos_base_target: normalizeReposBaseTarget(payload.repos_base_target),
+    travail_nuit_autorise: normalizeTravailNuitAutorise(
+      payload.travail_nuit_autorise,
+      0
+    ),
+    ordre_nuit: normalizeOptionalOrdreNuit(payload.ordre_nuit),
+    controle_fixe: normalizeControleFixe(payload.controle_fixe, 0),
+    controle_periode: normalizeOptionalControlePeriode(payload.controle_periode),
+  };
+
+  if (!value.prenom) {
+    errors.push("prenom is required");
+  }
+
+  if (!value.nom) {
+    errors.push("nom is required");
+  }
+
+  if (!value.email) {
+    errors.push("email is required");
+  }
+
+  if (!value.mot_de_passe) {
+    errors.push("mot_de_passe is required");
+  }
+
+  if (!allowedSexes.includes(value.sexe)) {
+    errors.push("sexe must be either Homme or Femme");
+  }
+
+  if (!Number.isInteger(value.groupe_id) || value.groupe_id <= 0) {
+    errors.push("groupe_id must be a valid positive integer");
+  }
+
+  if (value.actif === null) {
+    errors.push("actif must be a boolean or 0/1 value");
+  }
+
+  if (value.repos_base_target === null) {
+    errors.push("repos_base_target is required");
+  } else if (value.repos_base_target === "__INVALID__") {
+    errors.push("repos_base_target must be either '1j' or '2j'");
+  }
+
+  if (value.travail_nuit_autorise === null) {
+    errors.push("travail_nuit_autorise must be a boolean or 0/1 value");
+  }
+
+  if (value.controle_fixe === null) {
+    errors.push("controle_fixe must be a boolean or 0/1 value");
+  }
+
+  if (value.controle_periode === "__INVALID__") {
+    errors.push("controle_periode must be either 'Matin', 'Soir' or null");
+  }
+
+  if (
+    payload.ordre_nuit !== undefined &&
+    payload.ordre_nuit !== null &&
+    payload.ordre_nuit !== "" &&
+    value.ordre_nuit === null
+  ) {
+    errors.push("ordre_nuit must be a valid positive integer when provided");
+  }
+
+  if (
+    value.controle_fixe === 1 &&
+    !["Matin", "Soir"].includes(value.controle_periode)
+  ) {
+    errors.push("controle_periode is required and must be 'Matin' or 'Soir' when controle_fixe = true");
+  }
+
+  if (value.controle_fixe === 0 && value.controle_periode !== null) {
+    errors.push("controle_periode must be null when controle_fixe = false");
+  }
+
+  if (value.sexe === "Femme" || value.controle_fixe === 1) {
+    value.travail_nuit_autorise = 0;
+    value.ordre_nuit = null;
+  }
+
+  if (
+    value.travail_nuit_autorise === 1 &&
+    value.sexe !== "Homme"
+  ) {
+    errors.push("travail_nuit_autorise requires sexe = 'Homme'");
+  }
+
+  if (
+    value.travail_nuit_autorise === 1 &&
+    value.controle_fixe === 1
+  ) {
+    errors.push("travail_nuit_autorise requires controle_fixe = false");
+  }
+
+  if (
+    value.travail_nuit_autorise === 1 &&
+    value.ordre_nuit === null
+  ) {
+    errors.push("ordre_nuit is required when travail_nuit_autorise = true");
+  }
+
+  if (errors.length > 0) {
+    return { errors };
+  }
+
+  if (value.controle_fixe === 0) {
+    value.controle_periode = null;
+  }
+
+  if (value.travail_nuit_autorise === 0) {
+    value.ordre_nuit = null;
+  }
+
+  return { value };
+}
+
 async function groupeExists(groupeId, connection = db) {
   const [rows] = await connection.query("SELECT id FROM groupes WHERE id = ? LIMIT 1", [
     groupeId,
@@ -358,6 +488,24 @@ async function utilisateurExists(utilisateurId, connection = db) {
   );
 
   return rows.length > 0;
+}
+
+async function emailExists(email, connection = db) {
+  const [rows] = await connection.query(
+    "SELECT id FROM utilisateurs WHERE LOWER(email) = LOWER(?) LIMIT 1",
+    [email]
+  );
+
+  return rows.length > 0;
+}
+
+async function findRoleIdByName(roleName, connection = db) {
+  const [rows] = await connection.query(
+    "SELECT id FROM roles WHERE LOWER(nom) = LOWER(?) LIMIT 1",
+    [roleName]
+  );
+
+  return rows[0]?.id || null;
 }
 
 async function findEmployeById(id, connection = db) {
@@ -465,34 +613,65 @@ async function getEmployeById(req, res) {
 }
 
 async function createEmploye(req, res) {
-  try {
-    const { error, value } = validateEmployePayload(req.body);
+  const connection = await db.getConnection();
 
-    if (error) {
+  try {
+    const { errors, value } = validateEmployeCreationPayload(req.body);
+
+    if (errors) {
       return res.status(400).json({
-        message: error,
+        message: "Invalid employee creation payload",
+        errors,
       });
     }
 
-    const groupExists = await groupeExists(value.groupe_id);
+    await connection.beginTransaction();
+
+    const groupExists = await groupeExists(value.groupe_id, connection);
 
     if (!groupExists) {
+      await connection.rollback();
       return res.status(400).json({
         message: "groupe_id does not exist",
       });
     }
 
-    if (value.utilisateur_id !== null) {
-      const userExists = await utilisateurExists(value.utilisateur_id);
+    const isEmailUsed = await emailExists(value.email, connection);
 
-      if (!userExists) {
-        return res.status(400).json({
-          message: "utilisateur_id does not exist",
-        });
-      }
+    if (isEmailUsed) {
+      await connection.rollback();
+      return res.status(409).json({
+        message: "email already exists",
+        errors: [`Email ${value.email} already exists.`],
+      });
     }
 
-    const [result] = await db.query(
+    const employeeRoleId = await findRoleIdByName("employe", connection);
+
+    if (!employeeRoleId) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: "Role employe was not found",
+        errors: ["Role employe was not found."],
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(
+      value.mot_de_passe,
+      PASSWORD_SALT_ROUNDS
+    );
+    const [userResult] = await connection.query(
+      `
+        INSERT INTO utilisateurs (
+          email,
+          mot_de_passe,
+          role_id
+        )
+        VALUES (?, ?, ?)
+      `,
+      [value.email, hashedPassword, employeeRoleId]
+    );
+    const [result] = await connection.query(
       `
         INSERT INTO employes (
           prenom,
@@ -500,34 +679,67 @@ async function createEmploye(req, res) {
           sexe,
           groupe_id,
           utilisateur_id,
+          actif,
+          repos_base_target,
+          travail_nuit_autorise,
+          ordre_nuit,
           controle_fixe,
-          travail_nuit_autorise
+          controle_periode
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         value.prenom,
         value.nom,
         value.sexe,
         value.groupe_id,
-        value.utilisateur_id,
-        value.controle_fixe,
+        userResult.insertId,
+        value.actif,
+        value.repos_base_target,
         value.travail_nuit_autorise,
+        value.ordre_nuit,
+        value.controle_fixe,
+        value.controle_periode,
       ]
     );
 
-    const createdEmploye = await findEmployeById(result.insertId);
+    const { employees, hasNightAuthorization } =
+      await fetchActiveEmployeesForPlanningConfig(connection);
+
+    validateEmployeePlanningConfig(employees, hasNightAuthorization);
+
+    const createdEmploye = await findEmployeById(result.insertId, connection);
+
+    await connection.commit();
 
     return res.status(201).json({
-      message: "Employee created successfully",
-      employe: createdEmploye,
+      message: "Employé créé avec succès.",
+      employee: createdEmploye,
     });
   } catch (error) {
+    await connection.rollback();
+
+    if (error instanceof PlanningGenerationError && error.statusCode === 422) {
+      return res.status(422).json({
+        message: "Invalid employee planning configuration.",
+        errors: error.errors || [],
+      });
+    }
+
+    if (error.code === "ER_DUP_ENTRY") {
+      return res.status(409).json({
+        message: "email already exists",
+        errors: ["Email already exists."],
+      });
+    }
+
     console.error(error);
 
     return res.status(500).json({
       message: "Failed to create employee",
     });
+  } finally {
+    connection.release();
   }
 }
 
