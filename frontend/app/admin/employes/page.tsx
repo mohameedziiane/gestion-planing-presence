@@ -11,6 +11,15 @@ type EmployeeRow = Record<string, unknown> & {
   groupe?: string | NestedRecord;
   utilisateur?: NestedRecord;
 };
+type EditEmployeeForm = {
+  sexe: "Homme" | "Femme";
+  groupe_id: number;
+  actif: boolean;
+  repos_base_target: "1j" | "2j";
+  travail_nuit_autorise: boolean;
+  ordre_nuit: string;
+  controle: "Aucun" | "Matin" | "Soir";
+};
 
 function getString(row: NestedRecord, keys: string[]) {
   for (const key of keys) {
@@ -60,6 +69,26 @@ function getBoolean(row: NestedRecord, keys: string[]) {
   return false;
 }
 
+function getNumber(row: NestedRecord, keys: string[]) {
+  for (const key of keys) {
+    const value = row[key];
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+
+    if (typeof value === "string" && value.trim()) {
+      const numericValue = Number(value);
+
+      if (Number.isFinite(numericValue)) {
+        return numericValue;
+      }
+    }
+  }
+
+  return null;
+}
+
 function getEmployeeName(row: EmployeeRow) {
   const directName = getString(row, ["full_name", "nom_complet"]);
 
@@ -93,6 +122,26 @@ function getGroupName(row: EmployeeRow) {
   );
 }
 
+function getGroupId(row: EmployeeRow) {
+  const directGroupId = getNumber(row, ["groupe_id", "group_id"]);
+
+  if (directGroupId) {
+    return directGroupId;
+  }
+
+  const groupName = getGroupName(row).toLowerCase();
+
+  if (groupName.includes("groupe a") || groupName.includes("groupe 1")) {
+    return 1;
+  }
+
+  if (groupName.includes("groupe b") || groupName.includes("groupe 2")) {
+    return 2;
+  }
+
+  return 1;
+}
+
 function getEmail(row: EmployeeRow) {
   const utilisateur = getNested(row, "utilisateur");
 
@@ -107,11 +156,86 @@ function getSexe(row: EmployeeRow) {
   return getString(row, ["sexe"]) || "-";
 }
 
+function getReposBaseTarget(row: EmployeeRow) {
+  const value = getString(row, ["repos_base_target"]);
+
+  return value === "2j" ? "2j" : "1j";
+}
+
+function getOrdreNuit(row: EmployeeRow) {
+  const value = getNumber(row, ["ordre_nuit"]);
+
+  return value ? String(value) : "";
+}
+
+function getControlValue(row: EmployeeRow) {
+  const fixedControl = getBoolean(employeeLike(row), [
+    "controle_fixe",
+    "is_control",
+    "is_main_control",
+  ]);
+  const controlPeriod = getString(row, ["controle_periode"]);
+
+  if (!fixedControl) {
+    return "Aucun";
+  }
+
+  return controlPeriod === "Soir" ? "Soir" : "Matin";
+}
+
+function employeeLike(row: EmployeeRow) {
+  return row as NestedRecord;
+}
+
+function buildInitialForm(employee: EmployeeRow): EditEmployeeForm {
+  const sexe = getSexe(employee) === "Femme" ? "Femme" : "Homme";
+  const controle = getControlValue(employee);
+  const nightAuthorized =
+    sexe === "Homme" &&
+    controle === "Aucun" &&
+    getBoolean(employee, [
+      "travail_nuit_autorise",
+      "can_work_night",
+      "nuit_autorisee",
+    ]);
+
+  return {
+    sexe,
+    groupe_id: getGroupId(employee),
+    actif: getBoolean(employee, ["actif", "active", "is_active"]),
+    repos_base_target: getReposBaseTarget(employee),
+    travail_nuit_autorise: nightAuthorized,
+    ordre_nuit: nightAuthorized ? getOrdreNuit(employee) : "",
+    controle,
+  };
+}
+
+function normalizeForm(form: EditEmployeeForm): EditEmployeeForm {
+  const nextForm = { ...form };
+
+  if (nextForm.sexe === "Femme" || nextForm.controle !== "Aucun") {
+    nextForm.travail_nuit_autorise = false;
+    nextForm.ordre_nuit = "";
+  }
+
+  if (!nextForm.travail_nuit_autorise) {
+    nextForm.ordre_nuit = "";
+  }
+
+  return nextForm;
+}
+
 function yesNo(value: boolean) {
   return value ? "Oui" : "Non";
 }
 
-function EmployeeCard({ employee }: { employee: EmployeeRow }) {
+function EmployeeCard({
+  employee,
+  onEdit,
+}: {
+  employee: EmployeeRow;
+  onEdit: (employee: EmployeeRow) => void;
+}) {
   const fixedControl = getBoolean(employee, [
     "controle_fixe",
     "is_control",
@@ -157,6 +281,16 @@ function EmployeeCard({ employee }: { employee: EmployeeRow }) {
           <dd className="mt-1 text-[#e1e3e4]">{yesNo(nightAuthorized)}</dd>
         </div>
       </dl>
+
+      <div className="mt-4 flex justify-end">
+        <button
+          type="button"
+          onClick={() => onEdit(employee)}
+          className="border border-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#e1e3e4] transition hover:bg-[#1AB6FF] hover:text-[#102029]"
+        >
+          Modifier
+        </button>
+      </div>
     </article>
   );
 }
@@ -166,12 +300,164 @@ export default function AdminEmployesPage() {
   const [employees, setEmployees] = useState<EmployeeRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+  const [editingEmployee, setEditingEmployee] = useState<EmployeeRow | null>(
+    null
+  );
+  const [editForm, setEditForm] = useState<EditEmployeeForm | null>(null);
+  const [editError, setEditError] = useState("");
+  const [editErrors, setEditErrors] = useState<string[]>([]);
+  const [isSaving, setIsSaving] = useState(false);
+
+  async function fetchEmployees() {
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    setIsLoading(true);
+    setError("");
+
+    try {
+      const response = await fetch("http://localhost:5000/api/employes", {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        setError(data?.message || "Impossible de charger les employÃ©s.");
+        setEmployees([]);
+        return;
+      }
+
+      setEmployees(Array.isArray(data) ? data : []);
+    } catch {
+      setError("Impossible de contacter le serveur backend.");
+      setEmployees([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }
 
   function handleLogout() {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("keepSignedIn");
     router.push("/");
+  }
+
+  function openEditModal(employee: EmployeeRow) {
+    setEditingEmployee(employee);
+    setEditForm(buildInitialForm(employee));
+    setEditError("");
+    setEditErrors([]);
+    setSuccessMessage("");
+  }
+
+  function closeEditModal() {
+    if (isSaving) {
+      return;
+    }
+
+    setEditingEmployee(null);
+    setEditForm(null);
+    setEditError("");
+    setEditErrors([]);
+  }
+
+  function updateEditForm(nextFields: Partial<EditEmployeeForm>) {
+    setEditForm((currentForm) =>
+      currentForm ? normalizeForm({ ...currentForm, ...nextFields }) : null
+    );
+    setEditError("");
+    setEditErrors([]);
+  }
+
+  async function handleSaveEmployee() {
+    if (!editingEmployee || !editForm) {
+      return;
+    }
+
+    const normalizedForm = normalizeForm(editForm);
+    const employeeId = editingEmployee.id;
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    if (!employeeId) {
+      setEditError("Identifiant employÃ© introuvable.");
+      return;
+    }
+
+    if (
+      normalizedForm.travail_nuit_autorise &&
+      normalizedForm.ordre_nuit.trim() === ""
+    ) {
+      setEditError("Ordre nuit est requis quand la nuit est autorisÃ©e.");
+      return;
+    }
+
+    const payload = {
+      sexe: normalizedForm.sexe,
+      groupe_id: normalizedForm.groupe_id,
+      actif: normalizedForm.actif,
+      repos_base_target: normalizedForm.repos_base_target,
+      travail_nuit_autorise: normalizedForm.travail_nuit_autorise,
+      ordre_nuit: normalizedForm.travail_nuit_autorise
+        ? Number(normalizedForm.ordre_nuit)
+        : null,
+      controle_fixe: normalizedForm.controle !== "Aucun",
+      controle_periode:
+        normalizedForm.controle === "Aucun" ? null : normalizedForm.controle,
+    };
+
+    setIsSaving(true);
+    setEditError("");
+    setEditErrors([]);
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/employes/${employeeId}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        }
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        setEditError(
+          data?.message || "Impossible de mettre Ã  jour cet employÃ©."
+        );
+        setEditErrors(
+          Array.isArray(data?.errors)
+            ? data.errors.map((item: unknown) => String(item))
+            : []
+        );
+        return;
+      }
+
+      setSuccessMessage("EmployÃ© mis Ã  jour avec succÃ¨s.");
+      setEditingEmployee(null);
+      setEditForm(null);
+      await fetchEmployees();
+    } catch {
+      setEditError("Impossible de contacter le serveur backend.");
+      setEditErrors([]);
+    } finally {
+      setIsSaving(false);
+    }
   }
 
   useEffect(() => {
@@ -182,17 +468,16 @@ export default function AdminEmployesPage() {
       return;
     }
 
-    const authToken = token;
     let isActive = true;
 
-    async function fetchEmployees() {
+    async function loadEmployees() {
       setIsLoading(true);
       setError("");
 
       try {
         const response = await fetch("http://localhost:5000/api/employes", {
           headers: {
-            Authorization: `Bearer ${authToken}`,
+            Authorization: `Bearer ${token}`,
           },
         });
         const data = await response.json();
@@ -220,7 +505,7 @@ export default function AdminEmployesPage() {
       }
     }
 
-    fetchEmployees();
+    loadEmployees();
 
     return () => {
       isActive = false;
@@ -310,16 +595,192 @@ export default function AdminEmployesPage() {
             Aucun employé trouvé.
           </p>
         ) : (
-          <div className="grid gap-4">
-            {employees.map((employee, index) => (
-              <EmployeeCard
-                key={employee.id || `employee-${index}`}
-                employee={employee}
-              />
-            ))}
-          </div>
+          <>
+            {successMessage ? (
+              <p className="mb-4 border border-[#1AB6FF]/40 bg-[#1AB6FF]/10 px-4 py-3 text-sm font-semibold text-[#e1e3e4]">
+                {successMessage}
+              </p>
+            ) : null}
+
+            <div className="grid gap-4">
+              {employees.map((employee, index) => (
+                <EmployeeCard
+                  key={employee.id || `employee-${index}`}
+                  employee={employee}
+                  onEdit={openEditModal}
+                />
+              ))}
+            </div>
+          </>
         )}
       </section>
+
+      {editingEmployee && editForm ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 py-4 sm:items-center">
+          <div className="max-h-[92vh] w-full max-w-[620px] overflow-y-auto border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4 border-b border-[rgba(172,189,197,0.15)] pb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#e1e3e4]">
+                  Modifier employé
+                </h2>
+                <p className="mt-1 text-sm text-[#acbdc5]">
+                  {getEmployeeName(editingEmployee) || "Employé non défini"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="border border-[rgba(172,189,197,0.18)] px-3 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <div className="mt-5 grid gap-4 sm:grid-cols-2">
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Sexe
+                <select
+                  value={editForm.sexe}
+                  onChange={(event) =>
+                    updateEditForm({
+                      sexe: event.target.value as "Homme" | "Femme",
+                    })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                >
+                  <option value="Homme">Homme</option>
+                  <option value="Femme">Femme</option>
+                </select>
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Groupe
+                <select
+                  value={editForm.groupe_id}
+                  onChange={(event) =>
+                    updateEditForm({ groupe_id: Number(event.target.value) })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                >
+                  <option value={1}>Groupe A</option>
+                  <option value={2}>Groupe B</option>
+                </select>
+              </label>
+
+              <label className="flex items-center justify-between gap-3 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3 text-sm font-semibold text-[#e1e3e4]">
+                Actif
+                <input
+                  type="checkbox"
+                  checked={editForm.actif}
+                  onChange={(event) =>
+                    updateEditForm({ actif: event.target.checked })
+                  }
+                  className="h-5 w-5 accent-[#1AB6FF]"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Repos base
+                <select
+                  value={editForm.repos_base_target}
+                  onChange={(event) =>
+                    updateEditForm({
+                      repos_base_target: event.target.value as "1j" | "2j",
+                    })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                >
+                  <option value="1j">1j</option>
+                  <option value="2j">2j</option>
+                </select>
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+                Contrôle fixe
+                <select
+                  value={editForm.controle}
+                  onChange={(event) =>
+                    updateEditForm({
+                      controle: event.target.value as
+                        | "Aucun"
+                        | "Matin"
+                        | "Soir",
+                    })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                >
+                  <option value="Aucun">Aucun</option>
+                  <option value="Matin">Matin</option>
+                  <option value="Soir">Soir</option>
+                </select>
+              </label>
+
+              <label className="flex items-center justify-between gap-3 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3 text-sm font-semibold text-[#e1e3e4]">
+                Peut travailler la nuit
+                <input
+                  type="checkbox"
+                  checked={editForm.travail_nuit_autorise}
+                  disabled={
+                    editForm.sexe === "Femme" || editForm.controle !== "Aucun"
+                  }
+                  onChange={(event) =>
+                    updateEditForm({
+                      travail_nuit_autorise: event.target.checked,
+                    })
+                  }
+                  className="h-5 w-5 accent-[#1AB6FF] disabled:opacity-40"
+                />
+              </label>
+
+              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4] sm:col-span-2">
+                Ordre nuit
+                <input
+                  type="number"
+                  min={1}
+                  value={editForm.ordre_nuit}
+                  disabled={!editForm.travail_nuit_autorise}
+                  required={editForm.travail_nuit_autorise}
+                  onChange={(event) =>
+                    updateEditForm({ ordre_nuit: event.target.value })
+                  }
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF] disabled:cursor-not-allowed disabled:opacity-50"
+                />
+              </label>
+            </div>
+
+            {editError ? (
+              <div className="mt-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                <p className="font-semibold">{editError}</p>
+                {editErrors.length > 0 ? (
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {editErrors.map((item, index) => (
+                      <li key={`${item}-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closeEditModal}
+                className="border border-[rgba(172,189,197,0.18)] px-4 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEmployee}
+                disabled={isSaving}
+                className="border border-[#1AB6FF] bg-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:bg-transparent hover:text-[#e1e3e4] disabled:cursor-wait disabled:opacity-60"
+              >
+                {isSaving ? "Enregistrement..." : "Enregistrer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </main>
   );
 }
