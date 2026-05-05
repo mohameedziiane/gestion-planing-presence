@@ -256,6 +256,147 @@ function buildFixedControllersByPeriodId({ employees, matin, soir }) {
   return fixedControllersByPeriodId;
 }
 
+function addConfigError(errors, message) {
+  if (!errors.includes(message)) {
+    errors.push(message);
+  }
+}
+
+function hasValue(value) {
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function isNightWorkAuthorized(employee, hasNightAuthorization) {
+  return hasNightAuthorization && Number(employee.travail_nuit_autorise) === 1;
+}
+
+function validateEmployeePlanningConfig(employees, hasNightAuthorization) {
+  const errors = [];
+  const matinFixedControls = employees.filter(
+    (employee) =>
+      Number(employee.controle_fixe) === 1 &&
+      normalizeText(employee.controle_periode) === normalizeText("Matin")
+  );
+  const soirFixedControls = employees.filter(
+    (employee) =>
+      Number(employee.controle_fixe) === 1 &&
+      normalizeText(employee.controle_periode) === normalizeText("Soir")
+  );
+  const nightOrderByValue = new Map();
+  const nightCapableEmployees = [];
+
+  if (matinFixedControls.length !== 1) {
+    addConfigError(
+      errors,
+      `Exactly one active Matin fixed control is required, found ${matinFixedControls.length}.`
+    );
+  }
+
+  if (soirFixedControls.length !== 1) {
+    addConfigError(
+      errors,
+      `Exactly one active Soir fixed control is required, found ${soirFixedControls.length}.`
+    );
+  }
+
+  for (const employee of employees) {
+    const employeeName = formatEmployeeName(employee);
+    const authorizedForNight = isNightWorkAuthorized(
+      employee,
+      hasNightAuthorization
+    );
+    const isFixedControl = Number(employee.controle_fixe) === 1;
+    const hasNightOrder = hasValue(employee.ordre_nuit);
+    const normalizedReposBaseTarget = String(employee.repos_base_target || "").trim();
+    const normalizedControlPeriod = normalizeText(employee.controle_periode);
+
+    if (!["1j", "2j"].includes(normalizedReposBaseTarget)) {
+      addConfigError(
+        errors,
+        normalizedReposBaseTarget
+          ? `Employee ${employeeName} has invalid repos_base_target '${normalizedReposBaseTarget}'.`
+          : `Employee ${employeeName} is missing repos_base_target.`
+      );
+    }
+
+    if (employee.sexe === "Femme" && authorizedForNight) {
+      addConfigError(
+        errors,
+        `Female employee ${employeeName} cannot be authorized for night work.`
+      );
+    }
+
+    if (isFixedControl && authorizedForNight) {
+      addConfigError(
+        errors,
+        `Fixed control ${employeeName} cannot be authorized for night work.`
+      );
+    }
+
+    if (isFixedControl && !["MATIN", "SOIR"].includes(normalizedControlPeriod)) {
+      addConfigError(
+        errors,
+        `Fixed control ${employeeName} must have controle_periode 'Matin' or 'Soir'.`
+      );
+    }
+
+    if (!isFixedControl && hasValue(employee.controle_periode)) {
+      addConfigError(
+        errors,
+        `Employee ${employeeName} has controle_periode set but is not a fixed control.`
+      );
+    }
+
+    if (!authorizedForNight && hasNightOrder) {
+      addConfigError(
+        errors,
+        `Employee ${employeeName} has ordre_nuit set but is not authorized for night work.`
+      );
+    }
+
+    if (
+      authorizedForNight &&
+      !isFixedControl &&
+      employee.sexe === "Homme"
+    ) {
+      if (!hasNightOrder) {
+        addConfigError(
+          errors,
+          `Night-capable employee ${employeeName} must have ordre_nuit set.`
+        );
+      } else {
+        nightCapableEmployees.push(employee);
+        const ordreNuit = Number(employee.ordre_nuit);
+
+        if (nightOrderByValue.has(ordreNuit)) {
+          addConfigError(
+            errors,
+            `Duplicate ordre_nuit ${ordreNuit} found for ${formatEmployeeName(
+              nightOrderByValue.get(ordreNuit)
+            )} and ${employeeName}.`
+          );
+        } else {
+          nightOrderByValue.set(ordreNuit, employee);
+        }
+      }
+    }
+  }
+
+  if (nightCapableEmployees.length < 3) {
+    addConfigError(
+      errors,
+      `At least 3 active night-capable male employees are required, found ${nightCapableEmployees.length}.`
+    );
+  }
+
+  if (errors.length > 0) {
+    throw new PlanningGenerationError(
+      422,
+      `Invalid employee planning configuration. ${errors.join(" | ")}`
+    );
+  }
+}
+
 function canResolveShiftFixedControlsForDate({
   date,
   restEmployeeIds,
@@ -1999,6 +2140,8 @@ async function generateWeeklyPlanning({ startDate, weekNumber, overwrite = false
     const periods = periodRows[0];
     const roles = roleRows[0];
     const employees = employeeRows;
+
+    validateEmployeePlanningConfig(employees, hasNightAuthorization);
 
     const [existingPlanningRows] = await connection.query(
       "SELECT COUNT(*) AS total FROM planning WHERE _date BETWEEN ? AND ?",
