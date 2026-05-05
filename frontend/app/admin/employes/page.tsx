@@ -162,6 +162,10 @@ function getSexe(row: EmployeeRow) {
   return getString(row, ["sexe"]) || "-";
 }
 
+function isEmployeeActive(row: EmployeeRow) {
+  return getBoolean(row, ["actif", "active", "is_active"]);
+}
+
 function getReposBaseTarget(row: EmployeeRow) {
   const value = getString(row, ["repos_base_target"]);
 
@@ -261,10 +265,13 @@ function yesNo(value: boolean) {
 function EmployeeCard({
   employee,
   onEdit,
+  onDeactivate,
 }: {
   employee: EmployeeRow;
   onEdit: (employee: EmployeeRow) => void;
+  onDeactivate: (employee: EmployeeRow) => void;
 }) {
+  const active = isEmployeeActive(employee);
   const fixedControl = getBoolean(employee, [
     "controle_fixe",
     "is_control",
@@ -285,9 +292,16 @@ function EmployeeCard({
           </h2>
           <p className="mt-1 text-sm text-[#acbdc5]">{getEmail(employee)}</p>
         </div>
-        <span className="w-fit border border-[rgba(172,189,197,0.15)] px-2 py-1 text-xs font-semibold text-[#acbdc5]">
-          {getGroupName(employee)}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          {!active ? (
+            <span className="w-fit border border-[rgba(172,189,197,0.25)] bg-[#334149] px-2 py-1 text-xs font-semibold text-[#acbdc5]">
+              Inactif
+            </span>
+          ) : null}
+          <span className="w-fit border border-[rgba(172,189,197,0.15)] px-2 py-1 text-xs font-semibold text-[#acbdc5]">
+            {getGroupName(employee)}
+          </span>
+        </div>
       </div>
 
       <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
@@ -311,7 +325,7 @@ function EmployeeCard({
         </div>
       </dl>
 
-      <div className="mt-4 flex justify-end">
+      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
         <button
           type="button"
           onClick={() => onEdit(employee)}
@@ -319,6 +333,15 @@ function EmployeeCard({
         >
           Modifier
         </button>
+        {active ? (
+          <button
+            type="button"
+            onClick={() => onDeactivate(employee)}
+            className="border border-red-400/35 bg-red-950/20 px-4 py-2 text-sm font-semibold text-red-200 transition hover:border-red-300/60 hover:bg-red-900/35 hover:text-red-100"
+          >
+            Désactiver
+          </button>
+        ) : null}
       </div>
     </article>
   );
@@ -344,6 +367,11 @@ export default function AdminEmployesPage() {
   const [createError, setCreateError] = useState("");
   const [createErrors, setCreateErrors] = useState<string[]>([]);
   const [isCreating, setIsCreating] = useState(false);
+  const [deactivatingEmployee, setDeactivatingEmployee] =
+    useState<EmployeeRow | null>(null);
+  const [deactivateError, setDeactivateError] = useState("");
+  const [deactivateErrors, setDeactivateErrors] = useState<string[]>([]);
+  const [isDeactivating, setIsDeactivating] = useState(false);
 
   async function fetchEmployees() {
     const token = localStorage.getItem("token");
@@ -400,6 +428,23 @@ export default function AdminEmployesPage() {
     setCreateErrors([]);
     setSuccessMessage("");
     setIsCreateModalOpen(true);
+  }
+
+  function openDeactivateModal(employee: EmployeeRow) {
+    setDeactivatingEmployee(employee);
+    setDeactivateError("");
+    setDeactivateErrors([]);
+    setSuccessMessage("");
+  }
+
+  function closeDeactivateModal() {
+    if (isDeactivating) {
+      return;
+    }
+
+    setDeactivatingEmployee(null);
+    setDeactivateError("");
+    setDeactivateErrors([]);
   }
 
   function closeCreateModal() {
@@ -604,6 +649,63 @@ export default function AdminEmployesPage() {
     }
   }
 
+  async function handleDeactivateEmployee() {
+    if (!deactivatingEmployee) {
+      return;
+    }
+
+    const employeeId = deactivatingEmployee.id;
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    if (!employeeId) {
+      setDeactivateError("Identifiant employÃ© introuvable.");
+      return;
+    }
+
+    setIsDeactivating(true);
+    setDeactivateError("");
+    setDeactivateErrors([]);
+
+    try {
+      const response = await fetch(
+        `http://localhost:5000/api/employes/${employeeId}`,
+        {
+          method: "DELETE",
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+      const data = await response.json();
+
+      if (!response.ok) {
+        setDeactivateError(
+          data?.message || "Impossible de dÃ©sactiver cet employÃ©."
+        );
+        setDeactivateErrors(
+          Array.isArray(data?.errors)
+            ? data.errors.map((item: unknown) => String(item))
+            : []
+        );
+        return;
+      }
+
+      setSuccessMessage("EmployÃ© dÃ©sactivÃ© avec succÃ¨s.");
+      setDeactivatingEmployee(null);
+      await fetchEmployees();
+    } catch {
+      setDeactivateError("Impossible de contacter le serveur backend.");
+      setDeactivateErrors([]);
+    } finally {
+      setIsDeactivating(false);
+    }
+  }
+
   useEffect(() => {
     const token = localStorage.getItem("token");
 
@@ -761,6 +863,7 @@ export default function AdminEmployesPage() {
                   key={employee.id || `employee-${index}`}
                   employee={employee}
                   onEdit={openEditModal}
+                  onDeactivate={openDeactivateModal}
                 />
               ))}
             </div>
@@ -978,6 +1081,69 @@ export default function AdminEmployesPage() {
                 className="border border-[#1AB6FF] bg-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:bg-transparent hover:text-[#e1e3e4] disabled:cursor-wait disabled:opacity-60"
               >
                 {isCreating ? "Création..." : "Créer"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deactivatingEmployee ? (
+        <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 py-4 sm:items-center">
+          <div className="max-h-[92vh] w-full max-w-[560px] overflow-y-auto border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4 border-b border-[rgba(172,189,197,0.15)] pb-4">
+              <div>
+                <h2 className="text-xl font-semibold text-[#e1e3e4]">
+                  Désactiver employé
+                </h2>
+                <p className="mt-1 text-sm font-semibold text-[#e1e3e4]">
+                  {getEmployeeName(deactivatingEmployee) ||
+                    "Employé non défini"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={closeDeactivateModal}
+                className="border border-[rgba(172,189,197,0.18)] px-3 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+              >
+                Fermer
+              </button>
+            </div>
+
+            <p className="mt-5 text-sm leading-6 text-[#acbdc5]">
+              Cet employé ne sera plus inclus dans les prochains plannings,
+              mais son historique sera conservé.
+            </p>
+
+            {deactivateError ? (
+              <div className="mt-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+                <p className="font-semibold">{deactivateError}</p>
+                {deactivateErrors.length > 0 ? (
+                  <ul className="mt-2 list-disc space-y-1 pl-5">
+                    {deactivateErrors.map((item, index) => (
+                      <li key={`${item}-${index}`}>{item}</li>
+                    ))}
+                  </ul>
+                ) : null}
+              </div>
+            ) : null}
+
+            <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+              <button
+                type="button"
+                onClick={closeDeactivateModal}
+                className="border border-[rgba(172,189,197,0.18)] px-4 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleDeactivateEmployee}
+                disabled={isDeactivating}
+                className="border border-red-400/45 bg-red-950/30 px-4 py-2 text-sm font-semibold text-red-100 transition hover:border-red-300/70 hover:bg-red-900/45 disabled:cursor-wait disabled:opacity-60"
+              >
+                {isDeactivating
+                  ? "Désactivation..."
+                  : "Confirmer la désactivation"}
               </button>
             </div>
           </div>
