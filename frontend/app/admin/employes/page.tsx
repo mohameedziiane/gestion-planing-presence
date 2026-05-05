@@ -193,6 +193,12 @@ function getControlValue(row: EmployeeRow) {
   return controlPeriod === "Soir" ? "Soir" : "Matin";
 }
 
+function getFixedControlLabel(row: EmployeeRow) {
+  const controlValue = getControlValue(row);
+
+  return controlValue === "Aucun" ? "Contrôle: Non" : `Contrôle: ${controlValue}`;
+}
+
 function employeeLike(row: EmployeeRow) {
   return row as NestedRecord;
 }
@@ -262,6 +268,17 @@ function yesNo(value: boolean) {
   return value ? "Oui" : "Non";
 }
 
+function StatCard({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-3">
+      <p className="text-xs font-semibold uppercase text-[#acbdc5]">
+        {label}
+      </p>
+      <p className="mt-1 text-2xl font-semibold text-[#e1e3e4]">{value}</p>
+    </div>
+  );
+}
+
 function EmployeeCard({
   employee,
   onEdit,
@@ -272,64 +289,61 @@ function EmployeeCard({
   onDeactivate: (employee: EmployeeRow) => void;
 }) {
   const active = isEmployeeActive(employee);
-  const fixedControl = getBoolean(employee, [
-    "controle_fixe",
-    "is_control",
-    "is_main_control",
-  ]);
   const nightAuthorized = getBoolean(employee, [
     "travail_nuit_autorise",
     "can_work_night",
     "nuit_autorisee",
   ]);
+  const ordreNuit = getOrdreNuit(employee);
 
   return (
-    <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-        <div>
-          <h2 className="text-base font-semibold text-[#e1e3e4]">
+    <article className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <h2 className="truncate text-base font-semibold text-[#e1e3e4]">
             {getEmployeeName(employee) || "Employé non défini"}
           </h2>
-          <p className="mt-1 text-sm text-[#acbdc5]">{getEmail(employee)}</p>
+          <p className="mt-1 truncate text-sm text-[#acbdc5]">
+            {getEmail(employee)}
+          </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {!active ? (
-            <span className="w-fit border border-[rgba(172,189,197,0.25)] bg-[#334149] px-2 py-1 text-xs font-semibold text-[#acbdc5]">
+            <span className="w-fit rounded-[3px] border border-[rgba(172,189,197,0.25)] bg-[#334149] px-2 py-1 text-xs font-semibold text-[#acbdc5]">
               Inactif
             </span>
           ) : null}
-          <span className="w-fit border border-[rgba(172,189,197,0.15)] px-2 py-1 text-xs font-semibold text-[#acbdc5]">
+          <span className="w-fit rounded-[3px] border border-[rgba(172,189,197,0.15)] px-2 py-1 text-xs font-semibold text-[#acbdc5]">
             {getGroupName(employee)}
           </span>
         </div>
       </div>
 
-      <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-3">
-        <div>
-          <dt className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
-            Sexe
-          </dt>
-          <dd className="mt-1 text-[#e1e3e4]">{getSexe(employee)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
-            Contrôle fixe
-          </dt>
-          <dd className="mt-1 text-[#e1e3e4]">{yesNo(fixedControl)}</dd>
-        </div>
-        <div>
-          <dt className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
-            Nuit autorisée
-          </dt>
-          <dd className="mt-1 text-[#e1e3e4]">{yesNo(nightAuthorized)}</dd>
-        </div>
-      </dl>
+      <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-[#e1e3e4]">
+        <span className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2.5 py-1.5">
+          Sexe: {getSexe(employee)}
+        </span>
+        <span className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2.5 py-1.5">
+          {getFixedControlLabel(employee)}
+        </span>
+        <span className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2.5 py-1.5">
+          Nuit: {yesNo(nightAuthorized)}
+        </span>
+        {ordreNuit ? (
+          <span className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2.5 py-1.5">
+            Ordre nuit: {ordreNuit}
+          </span>
+        ) : null}
+        <span className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2.5 py-1.5">
+          Repos base: {getReposBaseTarget(employee)}
+        </span>
+      </div>
 
-      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:justify-end">
+      <div className="mt-4 flex flex-col gap-2 border-t border-[rgba(172,189,197,0.12)] pt-3 sm:flex-row sm:justify-end">
         <button
           type="button"
           onClick={() => onEdit(employee)}
-          className="border border-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#e1e3e4] transition hover:bg-[#1AB6FF] hover:text-[#102029]"
+          className="rounded-[3px] border border-[#1AB6FF]/60 px-3 py-1.5 text-sm font-semibold text-[#e1e3e4] transition hover:bg-[#1AB6FF] hover:text-[#102029]"
         >
           Modifier
         </button>
@@ -337,7 +351,7 @@ function EmployeeCard({
           <button
             type="button"
             onClick={() => onDeactivate(employee)}
-            className="border border-red-400/35 bg-red-950/20 px-4 py-2 text-sm font-semibold text-red-200 transition hover:border-red-300/60 hover:bg-red-900/35 hover:text-red-100"
+            className="rounded-[3px] border border-red-400/35 bg-red-950/20 px-3 py-1.5 text-sm font-semibold text-red-200 transition hover:border-red-300/60 hover:bg-red-900/35 hover:text-red-100"
           >
             Désactiver
           </button>
@@ -372,6 +386,25 @@ export default function AdminEmployesPage() {
   const [deactivateError, setDeactivateError] = useState("");
   const [deactivateErrors, setDeactivateErrors] = useState<string[]>([]);
   const [isDeactivating, setIsDeactivating] = useState(false);
+  const employeeStats = {
+    total: employees.length,
+    active: employees.filter(isEmployeeActive).length,
+    inactive: employees.filter((employee) => !isEmployeeActive(employee)).length,
+    night: employees.filter((employee) =>
+      getBoolean(employee, [
+        "travail_nuit_autorise",
+        "can_work_night",
+        "nuit_autorisee",
+      ])
+    ).length,
+    fixedControls: employees.filter((employee) =>
+      getBoolean(employee, [
+        "controle_fixe",
+        "is_control",
+        "is_main_control",
+      ])
+    ).length,
+  };
 
   async function fetchEmployees() {
     const token = localStorage.getItem("token");
@@ -393,7 +426,7 @@ export default function AdminEmployesPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data?.message || "Impossible de charger les employÃ©s.");
+        setError(data?.message || "Impossible de charger les employés.");
         setEmployees([]);
         return;
       }
@@ -499,7 +532,7 @@ export default function AdminEmployesPage() {
     }
 
     if (!employeeId) {
-      setEditError("Identifiant employÃ© introuvable.");
+      setEditError("Identifiant employé introuvable.");
       return;
     }
 
@@ -507,7 +540,7 @@ export default function AdminEmployesPage() {
       normalizedForm.travail_nuit_autorise &&
       normalizedForm.ordre_nuit.trim() === ""
     ) {
-      setEditError("Ordre nuit est requis quand la nuit est autorisÃ©e.");
+      setEditError("Ordre nuit est requis quand la nuit est autorisée.");
       return;
     }
 
@@ -545,7 +578,7 @@ export default function AdminEmployesPage() {
 
       if (!response.ok) {
         setEditError(
-          data?.message || "Impossible de mettre Ã  jour cet employÃ©."
+          data?.message || "Impossible de mettre à jour cet employé."
         );
         setEditErrors(
           Array.isArray(data?.errors)
@@ -555,7 +588,7 @@ export default function AdminEmployesPage() {
         return;
       }
 
-      setSuccessMessage("EmployÃ© mis Ã  jour avec succÃ¨s.");
+      setSuccessMessage("Employé mis à jour avec succès.");
       setEditingEmployee(null);
       setEditForm(null);
       await fetchEmployees();
@@ -582,7 +615,7 @@ export default function AdminEmployesPage() {
       !normalizedForm.email.trim() ||
       !normalizedForm.mot_de_passe
     ) {
-      setCreateError("PrÃ©nom, nom, email et mot de passe sont requis.");
+      setCreateError("Prénom, nom, email et mot de passe sont requis.");
       return;
     }
 
@@ -590,7 +623,7 @@ export default function AdminEmployesPage() {
       normalizedForm.travail_nuit_autorise &&
       normalizedForm.ordre_nuit.trim() === ""
     ) {
-      setCreateError("Ordre nuit est requis quand la nuit est autorisÃ©e.");
+      setCreateError("Ordre nuit est requis quand la nuit est autorisée.");
       return;
     }
 
@@ -628,7 +661,7 @@ export default function AdminEmployesPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setCreateError(data?.message || "Impossible de crÃ©er cet employÃ©.");
+        setCreateError(data?.message || "Impossible de créer cet employé.");
         setCreateErrors(
           Array.isArray(data?.errors)
             ? data.errors.map((item: unknown) => String(item))
@@ -637,7 +670,7 @@ export default function AdminEmployesPage() {
         return;
       }
 
-      setSuccessMessage("EmployÃ© crÃ©Ã© avec succÃ¨s.");
+      setSuccessMessage("Employé créé avec succès.");
       setIsCreateModalOpen(false);
       setCreateForm(buildDefaultCreateForm());
       await fetchEmployees();
@@ -663,7 +696,7 @@ export default function AdminEmployesPage() {
     }
 
     if (!employeeId) {
-      setDeactivateError("Identifiant employÃ© introuvable.");
+      setDeactivateError("Identifiant employé introuvable.");
       return;
     }
 
@@ -685,7 +718,7 @@ export default function AdminEmployesPage() {
 
       if (!response.ok) {
         setDeactivateError(
-          data?.message || "Impossible de dÃ©sactiver cet employÃ©."
+          data?.message || "Impossible de désactiver cet employé."
         );
         setDeactivateErrors(
           Array.isArray(data?.errors)
@@ -695,7 +728,7 @@ export default function AdminEmployesPage() {
         return;
       }
 
-      setSuccessMessage("EmployÃ© dÃ©sactivÃ© avec succÃ¨s.");
+      setSuccessMessage("Employé désactivé avec succès.");
       setDeactivatingEmployee(null);
       await fetchEmployees();
     } catch {
@@ -831,11 +864,24 @@ export default function AdminEmployesPage() {
           <button
             type="button"
             onClick={openCreateModal}
-            className="w-full border border-[#1AB6FF] bg-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:bg-transparent hover:text-[#e1e3e4] sm:w-auto"
+            className="w-full rounded-[3px] border border-[#1AB6FF] bg-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:border-[#169CDC] hover:bg-[#169CDC] sm:w-auto"
           >
-            Ajouter employÃ©
+            Ajouter employé
           </button>
         </div>
+
+        {!isLoading && !error ? (
+          <div className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+            <StatCard label="Total employés" value={employeeStats.total} />
+            <StatCard label="Actifs" value={employeeStats.active} />
+            <StatCard label="Inactifs" value={employeeStats.inactive} />
+            <StatCard label="Nuit autorisée" value={employeeStats.night} />
+            <StatCard
+              label="Contrôles fixes"
+              value={employeeStats.fixedControls}
+            />
+          </div>
+        ) : null}
 
         {isLoading ? (
           <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
