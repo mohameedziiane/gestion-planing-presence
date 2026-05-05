@@ -849,6 +849,8 @@ async function updateEmploye(req, res) {
 }
 
 async function deleteEmploye(req, res) {
+  const connection = await db.getConnection();
+
   try {
     const employeId = parseEmployeId(req.params.id);
 
@@ -858,31 +860,51 @@ async function deleteEmploye(req, res) {
       });
     }
 
-    const existingEmploye = await findEmployeById(employeId);
+    await connection.beginTransaction();
+
+    const existingEmploye = await findEmployeById(employeId, connection);
 
     if (!existingEmploye) {
+      await connection.rollback();
       return res.status(404).json({
         message: "Employee not found",
       });
     }
 
-    await db.query("DELETE FROM employes WHERE id = ?", [employeId]);
+    await connection.query("UPDATE employes SET actif = FALSE WHERE id = ?", [
+      employeId,
+    ]);
+
+    const { employees, hasNightAuthorization } =
+      await fetchActiveEmployeesForPlanningConfig(connection);
+
+    validateEmployeePlanningConfig(employees, hasNightAuthorization);
+
+    const updatedEmploye = await findEmployeById(employeId, connection);
+
+    await connection.commit();
 
     return res.json({
-      message: "Employee deleted successfully",
+      message: "Employé désactivé avec succès.",
+      employee: updatedEmploye,
     });
   } catch (error) {
-    if (error.code === "ER_ROW_IS_REFERENCED_2") {
-      return res.status(400).json({
-        message: "Employee cannot be deleted because related records exist",
+    await connection.rollback();
+
+    if (error instanceof PlanningGenerationError && error.statusCode === 422) {
+      return res.status(422).json({
+        message: "Invalid employee planning configuration.",
+        errors: error.errors || [],
       });
     }
 
     console.error(error);
 
     return res.status(500).json({
-      message: "Failed to delete employee",
+      message: "Failed to deactivate employee",
     });
+  } finally {
+    connection.release();
   }
 }
 
