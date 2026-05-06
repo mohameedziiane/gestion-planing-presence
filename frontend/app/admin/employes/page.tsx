@@ -1,9 +1,9 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+
+import AdminNavbar from "@/components/AdminNavbar";
 
 type NestedRecord = Record<string, unknown>;
 type EmployeeRow = Record<string, unknown> & {
@@ -901,63 +901,7 @@ export default function AdminEmployesPage() {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
-      <header className="border-b border-[rgba(172,189,197,0.15)] bg-[#38474e]">
-        <nav className="mx-auto flex min-h-[78px] w-full max-w-[1180px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
-          <div className="flex items-center gap-6">
-            <Link href="/admin" className="flex items-center gap-3">
-              <Image
-                src="/logo.webp"
-                alt="Gare Routière de Taza"
-                width={48}
-                height={48}
-                priority
-                className="h-12 w-12 object-contain"
-              />
-              <span className="hidden text-sm font-semibold text-[#e1e3e4] sm:block">
-                Gare Routière de Taza
-              </span>
-            </Link>
-
-            <div className="flex items-center gap-1">
-              <Link
-                href="/admin"
-                className="border-b-2 border-transparent px-3 py-2 text-sm font-semibold text-[#acbdc5] transition hover:text-[#e1e3e4]"
-              >
-                Accueil
-              </Link>
-              <Link
-                href="/admin/planning"
-                className="border-b-2 border-transparent px-3 py-2 text-sm font-semibold text-[#acbdc5] transition hover:text-[#e1e3e4]"
-              >
-                Planning
-              </Link>
-              <Link
-                href="/admin/employes"
-                className="border-b-2 border-[#1AB6FF] px-3 py-2 text-sm font-semibold text-[#e1e3e4]"
-              >
-                Employés
-              </Link>
-              <Link
-                href="/admin/repos"
-                className="border-b-2 border-transparent px-3 py-2 text-sm font-semibold text-[#acbdc5] transition hover:text-[#e1e3e4]"
-              >
-                Repos
-              </Link>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-semibold text-[#e1e3e4]">Admin</span>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="border border-[rgba(172,189,197,0.18)] px-4 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
-            >
-              Logout
-            </button>
-          </div>
-        </nav>
-      </header>
+      <AdminNavbar onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

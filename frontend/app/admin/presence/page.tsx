@@ -1,7 +1,5 @@
 "use client";
 
-import Image from "next/image";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -13,6 +11,7 @@ import {
   getToken,
   isRole,
 } from "@/lib/auth";
+import AdminNavbar from "@/components/AdminNavbar";
 
 type ApiRow = Record<string, unknown> & {
   id?: number | string;
@@ -214,65 +213,6 @@ function StatusBadge({ status }: { status: string }) {
     <span className={`inline-flex w-fit border px-2.5 py-1 text-xs font-semibold ${classes}`}>
       {status}
     </span>
-  );
-}
-
-function AdminNav({ onLogout }: { onLogout: () => void }) {
-  const navItems = [
-    { href: "/admin", label: "Accueil" },
-    { href: "/admin/planning", label: "Planning" },
-    { href: "/admin/employes", label: "Employ\u00e9s" },
-    { href: "/admin/repos", label: "Repos" },
-    { href: "/admin/presence", label: "Pr\u00e9sence" },
-  ];
-
-  return (
-    <header className="border-b border-[rgba(172,189,197,0.15)] bg-[#38474e]">
-      <nav className="mx-auto flex min-h-[78px] w-full max-w-[1180px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
-        <div className="flex items-center gap-6">
-          <Link href="/admin" className="flex items-center gap-3">
-            <Image
-              src="/logo.webp"
-              alt="Gare Routiere de Taza"
-              width={48}
-              height={48}
-              priority
-              className="h-12 w-12 object-contain"
-            />
-            <span className="hidden text-sm font-semibold text-[#e1e3e4] sm:block">
-              Gare Routiere de Taza
-            </span>
-          </Link>
-
-          <div className="flex flex-wrap items-center gap-1">
-            {navItems.map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`border-b-2 px-3 py-2 text-sm font-semibold transition hover:text-[#e1e3e4] ${
-                  item.href === "/admin/presence"
-                    ? "border-[#1AB6FF] text-[#e1e3e4]"
-                    : "border-transparent text-[#acbdc5]"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-semibold text-[#e1e3e4]">Admin</span>
-          <button
-            type="button"
-            onClick={onLogout}
-            className="border border-[rgba(172,189,197,0.18)] px-4 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
-          >
-            Logout
-          </button>
-        </div>
-      </nav>
-    </header>
   );
 }
 
@@ -505,7 +445,7 @@ export default function AdminPresencePage() {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
-      <AdminNav onLogout={handleLogout} />
+      <AdminNavbar onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6">
