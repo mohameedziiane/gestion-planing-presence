@@ -567,6 +567,138 @@ async function createPresence(req, res) {
   }
 }
 
+async function syncAbsences(req, res) {
+  try {
+    const date = String(req.body?.date || "").trim();
+
+    if (!isValidDateString(date)) {
+      return res.status(400).json({
+        message: "date must be a valid date in YYYY-MM-DD format",
+      });
+    }
+
+    const connection = await db.getConnection();
+
+    try {
+      await connection.beginTransaction();
+
+      const [planningRows] = await connection.query(
+        `
+          SELECT DISTINCT p.employe_id
+          FROM planning p
+          JOIN roles_travail rt ON rt.id = p.role_travail_id
+          WHERE p._date = ?
+            AND rt.nom <> 'Repos'
+          ORDER BY p.employe_id ASC
+        `,
+        [date]
+      );
+      const planningEmployeeIds = planningRows.map((row) =>
+        Number(row.employe_id)
+      );
+
+      if (planningEmployeeIds.length === 0) {
+        await connection.commit();
+
+        return res.json({
+          date,
+          insertedCount: 0,
+          skippedAlreadyHasPresence: 0,
+          skippedRepos: 0,
+          totalPlanningEmployees: 0,
+        });
+      }
+
+      const [reposRows] = await connection.query(
+        `
+          SELECT DISTINCT employe_id
+          FROM repos
+          WHERE _date = ?
+            AND employe_id IN (?)
+        `,
+        [date, planningEmployeeIds]
+      );
+      const reposEmployeeIds = new Set(
+        reposRows.map((row) => Number(row.employe_id))
+      );
+      const employeeIdsWithoutRepos = planningEmployeeIds.filter(
+        (employeId) => !reposEmployeeIds.has(employeId)
+      );
+
+      let presenceRows = [];
+
+      if (employeeIdsWithoutRepos.length > 0) {
+        const [rows] = await connection.query(
+          `
+            SELECT DISTINCT employe_id
+            FROM presence
+            WHERE _date = ?
+              AND employe_id IN (?)
+          `,
+          [date, employeeIdsWithoutRepos]
+        );
+
+        presenceRows = rows;
+      }
+
+      const presenceEmployeeIds = new Set(
+        presenceRows.map((row) => Number(row.employe_id))
+      );
+      const employeeIdsToInsert = employeeIdsWithoutRepos.filter(
+        (employeId) => !presenceEmployeeIds.has(employeId)
+      );
+
+      if (employeeIdsToInsert.length > 0) {
+        const valuesClause = employeeIdsToInsert
+          .map(() => "(?, ?, ?, ?, ?)")
+          .join(", ");
+        const queryParams = employeeIdsToInsert.flatMap((employeId) => [
+          employeId,
+          date,
+          null,
+          STATUS_ABSENT,
+          null,
+        ]);
+
+        await connection.query(
+          `
+            INSERT INTO presence (
+              employe_id,
+              _date,
+              heure_arrivee,
+              statut,
+              adresse_ip
+            )
+            VALUES ${valuesClause}
+          `,
+          queryParams
+        );
+      }
+
+      await connection.commit();
+
+      return res.json({
+        date,
+        insertedCount: employeeIdsToInsert.length,
+        skippedAlreadyHasPresence: presenceEmployeeIds.size,
+        skippedRepos: reposEmployeeIds.size,
+        totalPlanningEmployees: planningEmployeeIds.length,
+      });
+    } catch (error) {
+      await connection.rollback();
+      throw error;
+    } finally {
+      connection.release();
+    }
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      message: "Failed to synchronize absences",
+    });
+  }
+}
+
 async function updatePresence(req, res) {
   try {
     const presenceId = parsePositiveInt(req.params.id);
@@ -686,6 +818,7 @@ module.exports = {
   getPresenceByEmploye,
   getPresenceById,
   pointerPresence,
+  syncAbsences,
   createPresence,
   updatePresence,
   deletePresence,
