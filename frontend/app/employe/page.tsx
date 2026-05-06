@@ -32,6 +32,10 @@ type DayStatus = {
   presence: ApiRow[];
 };
 
+type AbsencesResponse = {
+  absences?: ApiRow[];
+};
+
 type WeekMode = "current" | "next";
 
 const dayLabels = [
@@ -177,6 +181,12 @@ async function fetchDayStatus(date: string): Promise<DayStatus> {
   };
 }
 
+async function fetchMyAbsences() {
+  const payload = await apiFetch<AbsencesResponse>("/api/presence/me/absences");
+
+  return Array.isArray(payload.absences) ? payload.absences : [];
+}
+
 function StatusBadge({
   children,
   tone,
@@ -285,6 +295,9 @@ export default function EmployePage() {
   const [todayError, setTodayError] = useState("");
   const [weekError, setWeekError] = useState("");
   const [pointageMessage, setPointageMessage] = useState("");
+  const [absences, setAbsences] = useState<ApiRow[]>([]);
+  const [isAbsencesLoading, setIsAbsencesLoading] = useState(true);
+  const [absencesError, setAbsencesError] = useState("");
 
   const todayDate = useMemo(() => getTodayDateValue(), []);
   const todayReposRow = todayState.repos[0];
@@ -406,6 +419,46 @@ export default function EmployePage() {
       isActive = false;
     };
   }, [isAuthorized, weekMode]);
+
+  useEffect(() => {
+    if (!isAuthorized) {
+      return;
+    }
+
+    let isActive = true;
+
+    async function refreshAbsences() {
+      setIsAbsencesLoading(true);
+      setAbsencesError("");
+
+      try {
+        const rows = await fetchMyAbsences();
+
+        if (isActive) {
+          setAbsences(rows);
+        }
+      } catch (error) {
+        if (isActive) {
+          setAbsences([]);
+          setAbsencesError(
+            error instanceof Error
+              ? error.message
+              : "Impossible de charger vos absences."
+          );
+        }
+      } finally {
+        if (isActive) {
+          setIsAbsencesLoading(false);
+        }
+      }
+    }
+
+    refreshAbsences();
+
+    return () => {
+      isActive = false;
+    };
+  }, [isAuthorized]);
 
   function handleLogout() {
     clearAuth();
@@ -647,6 +700,55 @@ export default function EmployePage() {
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {weekRows.map((day, index) => (
                 <DayCard key={day.date} day={day} index={index} />
+              ))}
+            </div>
+          )}
+        </section>
+
+        <section className="mt-8">
+          <div className="mb-5">
+            <h2 className="text-xl font-semibold text-[#e1e3e4]">
+              Mes absences
+            </h2>
+            <p className="mt-1 text-sm text-[#acbdc5]">
+              Historique personnel des absences enregistr\u00e9es.
+            </p>
+          </div>
+
+          {isAbsencesLoading ? (
+            <LoadingPanel label="Chargement des absences..." />
+          ) : absencesError ? (
+            <p className="border border-red-300/30 bg-red-500/10 px-4 py-5 text-sm text-red-100">
+              {absencesError}
+            </p>
+          ) : absences.length === 0 ? (
+            <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+              Aucune absence enregistr\u00e9e.
+            </p>
+          ) : (
+            <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {absences.map((absence, index) => (
+                <article
+                  key={absence.id || `absence-${index}`}
+                  className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4"
+                >
+                  <div className="mb-4 flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-base font-semibold text-[#e1e3e4]">
+                        {getString(absence, ["date", "_date"]) || "-"}
+                      </h3>
+                      <p className="mt-1 text-sm text-[#acbdc5]">
+                        Aucun pointage enregistr\u00e9
+                      </p>
+                    </div>
+                    <StatusBadge tone="red">
+                      {getPresenceStatus(absence) || "Absent"}
+                    </StatusBadge>
+                  </div>
+                  <p className="text-sm text-[#acbdc5]">
+                    Heure arriv\u00e9e: {getArrivalTime(absence) || "-"}
+                  </p>
+                </article>
               ))}
             </div>
           )}

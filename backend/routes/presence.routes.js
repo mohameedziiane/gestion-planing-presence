@@ -5,6 +5,7 @@ const {
   getPresenceByDate,
   getPresenceByEmploye,
   getPresenceById,
+  getMyAbsences,
   pointerPresence,
   syncAbsences,
   createPresence,
@@ -32,6 +33,7 @@ router.get(
 );
 router.post("/pointer", authorizeEmployeeOnly, pointerPresence);
 router.post("/sync-absences", authorizeRoles("admin"), syncAbsences);
+router.get("/me/absences", authorizeEmployeeOnly, getMyAbsences);
 router.get("/:id", allowPresenceRead, getPresenceById);
 router.post("/", authorizeRoles("admin"), createPresence);
 router.put("/:id", authorizeRoles("admin"), updatePresence);

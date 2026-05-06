@@ -413,6 +413,43 @@ async function getPresenceById(req, res) {
   }
 }
 
+async function getMyAbsences(req, res) {
+  try {
+    if (req.user.role !== "employe") {
+      return res.status(403).json({
+        message: "Only employees can access their own absences",
+      });
+    }
+
+    if (!req.user.employe_id) {
+      return res.status(403).json({
+        message: "Employee account is not linked to an employee record",
+      });
+    }
+
+    const [rows] = await db.query(
+      `
+        ${presenceSelectQuery}
+        WHERE p.employe_id = ?
+          AND p.statut = ?
+        ORDER BY p._date DESC
+        LIMIT 30
+      `,
+      [req.user.employe_id, STATUS_ABSENT]
+    );
+
+    return res.json({
+      absences: rows,
+    });
+  } catch (error) {
+    console.error(error);
+
+    return res.status(500).json({
+      message: "Failed to fetch employee absences",
+    });
+  }
+}
+
 async function pointerPresence(req, res) {
   try {
     if (req.user.role !== "employe") {
@@ -817,6 +854,7 @@ module.exports = {
   getPresenceByDate,
   getPresenceByEmploye,
   getPresenceById,
+  getMyAbsences,
   pointerPresence,
   syncAbsences,
   createPresence,
