@@ -1,11 +1,10 @@
 "use client";
 
-/* eslint-disable react-hooks/set-state-in-effect */
-
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 import AdminNavbar from "@/components/AdminNavbar";
+import { API_BASE_URL, translateUserMessage, translateUserMessages } from "@/lib/api";
 
 type NestedRecord = Record<string, unknown>;
 type ApiRow = Record<string, unknown> & {
@@ -23,18 +22,61 @@ type GenerationResult = {
   };
   planning?: ApiRow[];
   repos?: ApiRow[];
+  transferEvents?: TransferEvent[];
+  transferMarkers?: TransferEvent[];
   warnings?: string[];
   errors?: string[];
 };
+type TransferEvent = {
+  employe_id?: number | string;
+  employeeId?: number | string;
+  employeeName?: string;
+  prenom?: string;
+  nom?: string;
+  groupe?: string;
+  groupName?: string;
+  date?: string;
+  fromPeriodName?: string;
+  source_period?: string;
+  toPeriodName?: string;
+  target_period?: string;
+  display_status?: string;
+  label?: string;
+};
+type CellState = {
+  label: string;
+  title?: string;
+  variant?: "cross-shift-transfer" | "transfer-marker";
+};
+type PlanningEmployee = {
+  key: string;
+  name: string;
+  group: string;
+};
 
-const shifts = ["Matin", "Soir", "Nuit"];
 const PLANNING_WEEK_ANCHOR_DATE = "2026-04-27";
-const MATIN_GROUPE_A_ORDER = ["FATIHA", "HAYAT", "MONCEF", "AYOUB", "YOUNESS"];
-const SOIR_GROUPE_B_ORDER = ["ABIRE", "RAHMA", "SAID", "SABER", "TAHRA"];
-const MATIN_GROUPE_B_ORDER = ["ABIRE", "RAHMA", "MONCEF", "SABER", "TAHRA"];
-const SOIR_GROUPE_A_ORDER = ["FATIHA", "HAYAT", "SAID", "AYOUB", "YOUNESS"];
-const GROUPE_A_MARKERS = ["FATIHA", "HAYAT", "AYOUB", "YOUNESS"];
-const GROUPE_B_MARKERS = ["ABIRE", "RAHMA", "SABER", "TAHRA"];
+const OFFICIAL_GROUP_ORDER = ["groupe a", "groupe b"];
+const OFFICIAL_EMPLOYEE_ORDER_BY_GROUP: Record<string, string[]> = {
+  "groupe a": [
+    "fatiha almou",
+    "hayat el aroussi",
+    "moncef el amri",
+    "ayoub lahlali",
+    "youness belhouari",
+    "younes belhouari",
+  ],
+  "groupe b": [
+    "abire alaoui",
+    "rahma latrache",
+    "said nacer",
+    "saber aboabdallah",
+    "tahra ghaya",
+  ],
+};
+const FIXED_CONTROL_PERIOD_BY_EMPLOYEE: Record<string, "Matin" | "Soir"> = {
+  "moncef el amri": "Matin",
+  "said nacer": "Soir",
+};
 
 function getCurrentWeekMonday() {
   const date = new Date();
@@ -94,63 +136,74 @@ function normalizeText(value: unknown) {
     .toLowerCase();
 }
 
-function getNormalizedFirstName(name: string) {
-  return normalizeText(name).split(/\s+/)[0]?.toUpperCase() || "";
+function getOfficialGroupRank(groupName?: string) {
+  const normalizedGroup = normalizeText(groupName);
+  const groupRank = OFFICIAL_GROUP_ORDER.indexOf(normalizedGroup);
+
+  return groupRank === -1 ? Number.MAX_SAFE_INTEGER : groupRank;
 }
 
-function hasAnyEmployee(employees: { name: string }[], preferredNames: string[]) {
-  const employeeNames = employees.map((employee) =>
-    getNormalizedFirstName(employee.name)
+function getOfficialEmployeeRank(employee: { name: string; group?: string }) {
+  const normalizedGroup = normalizeText(employee.group);
+  const normalizedName = normalizeText(employee.name);
+  const groupOrder = OFFICIAL_EMPLOYEE_ORDER_BY_GROUP[normalizedGroup] || [];
+  const employeeRank = groupOrder.indexOf(normalizedName);
+
+  return employeeRank === -1 ? Number.MAX_SAFE_INTEGER : employeeRank;
+}
+
+function sortEmployeesByOfficialGroupOrder<T extends { name: string; group?: string }>(
+  employees: T[]
+) {
+  return [...employees].sort((a, b) => {
+    const groupRankDiff = getOfficialGroupRank(a.group) - getOfficialGroupRank(b.group);
+
+    if (groupRankDiff !== 0) {
+      return groupRankDiff;
+    }
+
+    const employeeRankDiff = getOfficialEmployeeRank(a) - getOfficialEmployeeRank(b);
+
+    if (employeeRankDiff !== 0) {
+      return employeeRankDiff;
+    }
+
+    const groupComparison = String(a.group || "").localeCompare(
+      String(b.group || ""),
+      "fr"
+    );
+
+    if (groupComparison !== 0) {
+      return groupComparison;
+    }
+
+    return a.name.localeCompare(b.name, "fr");
+  });
+}
+
+function sortSectionEmployeesWithControlInMiddle<T extends PlanningEmployee>(
+  employees: T[],
+  controlEmployeeKeys: Set<string>
+) {
+  const sortedEmployees = sortEmployeesByOfficialGroupOrder(employees);
+  const controlEmployees = sortedEmployees.filter((employee) =>
+    controlEmployeeKeys.has(employee.key)
   );
 
-  return preferredNames.some((name) => employeeNames.includes(name));
-}
-
-function getPreferredEmployeeOrder(
-  shift: "Matin" | "Soir",
-  employees: { name: string }[]
-) {
-  if (shift === "Matin") {
-    if (hasAnyEmployee(employees, GROUPE_B_MARKERS)) {
-      return MATIN_GROUPE_B_ORDER;
-    }
-
-    if (hasAnyEmployee(employees, GROUPE_A_MARKERS)) {
-      return MATIN_GROUPE_A_ORDER;
-    }
-
-    return MATIN_GROUPE_A_ORDER;
+  if (controlEmployees.length === 0) {
+    return sortedEmployees;
   }
 
-  if (hasAnyEmployee(employees, GROUPE_B_MARKERS)) {
-    return SOIR_GROUPE_B_ORDER;
-  }
+  const nonControlEmployees = sortedEmployees.filter(
+    (employee) => !controlEmployeeKeys.has(employee.key)
+  );
+  const middleIndex = Math.floor(nonControlEmployees.length / 2);
 
-  if (hasAnyEmployee(employees, GROUPE_A_MARKERS)) {
-    return SOIR_GROUPE_A_ORDER;
-  }
-
-  return SOIR_GROUPE_A_ORDER;
-}
-
-function sortEmployeesByPreferredOrder<T extends { name: string }>(
-  employees: T[],
-  shift: "Matin" | "Soir"
-) {
-  const preferredOrder = getPreferredEmployeeOrder(shift, employees);
-
-  return [...employees].sort((a, b) => {
-    const firstIndex = preferredOrder.indexOf(getNormalizedFirstName(a.name));
-    const secondIndex = preferredOrder.indexOf(getNormalizedFirstName(b.name));
-    const firstRank = firstIndex === -1 ? Number.MAX_SAFE_INTEGER : firstIndex;
-    const secondRank = secondIndex === -1 ? Number.MAX_SAFE_INTEGER : secondIndex;
-
-    if (firstRank !== secondRank) {
-      return firstRank - secondRank;
-    }
-
-    return a.name.localeCompare(b.name);
-  });
+  return [
+    ...nonControlEmployees.slice(0, middleIndex),
+    ...controlEmployees,
+    ...nonControlEmployees.slice(middleIndex),
+  ];
 }
 
 function getString(row: NestedRecord, keys: string[]) {
@@ -269,6 +322,18 @@ function getRoleName(row: ApiRow) {
   );
 }
 
+function getDisplayRole(row: ApiRow) {
+  return getString(row, ["display_role"]);
+}
+
+function getDisplayStatus(row: ApiRow) {
+  return getString(row, ["display_status"]);
+}
+
+function getTransferType(row: ApiRow) {
+  return getString(row, ["transfer_type"]);
+}
+
 function getGroupName(row: ApiRow) {
   const employe = getNested(row, "employe");
 
@@ -308,18 +373,33 @@ function getEmployeeKey(row: ApiRow) {
   return employeeName ? `name:${normalizeText(employeeName)}` : "";
 }
 
-function getReposType(row: ApiRow) {
-  return getString(row, ["type", "repos_type"]) || "Repos";
+function getTransferEmployeeKey(event: TransferEvent) {
+  const idValue = event.employeeId || event.employe_id;
+
+  if (typeof idValue === "number" || typeof idValue === "string") {
+    const normalizedId = String(idValue).trim();
+
+    if (normalizedId) {
+      return `id:${normalizedId}`;
+    }
+  }
+
+  const employeeName =
+    event.employeeName ||
+    [event.prenom, event.nom].filter(Boolean).join(" ").trim();
+
+  return employeeName ? `name:${normalizeText(employeeName)}` : "";
 }
 
-function groupPlanningByShift(rows: ApiRow[]) {
-  return shifts.reduce<Record<string, ApiRow[]>>((result, shift) => {
-    result[shift] = rows.filter(
-      (row) => normalizeText(getShiftName(row)) === normalizeText(shift)
-    );
+function getTransferEmployeeName(event: TransferEvent) {
+  return (
+    event.employeeName ||
+    [event.prenom, event.nom].filter(Boolean).join(" ").trim()
+  );
+}
 
-    return result;
-  }, {});
+function getReposType(row: ApiRow) {
+  return getString(row, ["type", "repos_type"]) || "Repos";
 }
 
 function addDays(dateValue: string, offset: number) {
@@ -342,87 +422,20 @@ function getWeekDatesFromStart(startDate: string) {
   return Array.from({ length: 7 }, (_, index) => addDays(startDate, index)).filter(Boolean);
 }
 
-function getRowsFromPayload(payload: unknown, keys: string[]) {
-  if (Array.isArray(payload)) {
-    return payload as ApiRow[];
+function getDownloadFilename(headerValue: string | null, fallback: string) {
+  if (!headerValue) {
+    return fallback;
   }
 
-  if (!payload || typeof payload !== "object") {
-    return [];
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(headerValue);
+
+  if (utf8Match?.[1]) {
+    return decodeURIComponent(utf8Match[1]);
   }
 
-  const record = payload as Record<string, unknown>;
+  const simpleMatch = /filename="?([^"]+)"?/i.exec(headerValue);
 
-  for (const key of keys) {
-    const value = record[key];
-
-    if (Array.isArray(value)) {
-      return value as ApiRow[];
-    }
-  }
-
-  return [];
-}
-
-async function fetchRowsByDate(
-  url: string,
-  token: string,
-  payloadKeys: string[]
-) {
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  });
-
-  if (response.status === 404) {
-    return [];
-  }
-
-  const text = await response.text();
-  const payload = text ? (JSON.parse(text) as unknown) : null;
-
-  if (!response.ok) {
-    throw new Error("Fetch failed");
-  }
-
-  return getRowsFromPayload(payload, payloadKeys);
-}
-
-async function fetchExistingWeekPlanning(
-  startDate: string,
-  token: string,
-  weekNumber: number
-): Promise<GenerationResult> {
-  const weekDays = getWeekDatesFromStart(startDate);
-  const planningRequests = weekDays.map((date) =>
-    fetchRowsByDate(
-      `http://localhost:5000/api/planning/date/${date}`,
-      token,
-      ["planning", "data", "rows"]
-    )
-  );
-  const reposRequests = weekDays.map((date) =>
-    fetchRowsByDate(
-      `http://localhost:5000/api/repos/date/${date}`,
-      token,
-      ["repos", "data", "rows"]
-    )
-  );
-  const [planningByDay, reposByDay] = await Promise.all([
-    Promise.all(planningRequests),
-    Promise.all(reposRequests),
-  ]);
-
-  return {
-    week: {
-      startDate,
-      endDate: weekDays[6] || startDate,
-      weekNumber,
-    },
-    planning: planningByDay.flat(),
-    repos: reposByDay.flat(),
-  };
+  return simpleMatch?.[1] || fallback;
 }
 
 function buildWeekDays(
@@ -445,42 +458,158 @@ function buildWeekDays(
   return Array.from({ length: 7 }, (_, index) => addDays(startDate, index)).filter(Boolean);
 }
 
-function getRoleStatus(row: ApiRow) {
-  const shift = normalizeText(getShiftName(row));
-
-  if (shift === "nuit") {
-    return "NUIT";
-  }
-
-  const role = getRoleName(row);
-
-  if (!role || normalizeText(role).includes("non defini")) {
-    return "-";
-  }
-
-  return role.toUpperCase();
+function normalizeRoleToken(value: string) {
+  return normalizeText(value)
+    .replace(/ãƒâ´/g, "o")
+    .replace(/ã´/g, "o")
+    .replace(/[\s/+]+/g, "");
 }
 
-function getCellClass(status: string) {
+function isForbiddenRoleLabel(value: string) {
+  const normalizedValue = normalizeText(value);
+  const compactRole = normalizeRoleToken(value);
+
+  return (
+    normalizedValue.includes("+") ||
+    normalizedValue.includes("/") ||
+    compactRole.includes("caisse") ||
+    compactRole === "guichetcontrole" ||
+    compactRole === "controleguichet"
+  );
+}
+
+function normalizeAllowedRoleLabel(value: string) {
+  const compactRole = normalizeRoleToken(value);
+
+  if (compactRole === "guichet") {
+    return "Guichet";
+  }
+
+  if (compactRole === "controle" || compactRole.startsWith("contr")) {
+    return "Contr\u00f4le";
+  }
+
+  if (compactRole === "repos") {
+    return "Repos";
+  }
+
+  if (compactRole === "nuit") {
+    return "Nuit";
+  }
+
+  return "";
+}
+
+function isCrossShiftTransferredInRow(row: ApiRow) {
+  const transferType = normalizeText(getTransferType(row));
+  const displayStatus = normalizeText(getDisplayStatus(row));
+  const sourcePeriod = normalizeText(getString(row, ["source_period"]));
+  const targetPeriod = normalizeText(getString(row, ["target_period"]));
+
+  return (
+    transferType === "cross_shift_control" ||
+    (displayStatus === "replacement_control" &&
+      Boolean(sourcePeriod) &&
+      Boolean(targetPeriod) &&
+      sourcePeriod !== targetPeriod)
+  );
+}
+
+function getRoleStatus(row: ApiRow): CellState {
+  const displayRole = getDisplayRole(row);
+  const role = getRoleName(row);
+  const rawLabel = displayRole || role;
+
+  if (!rawLabel || normalizeText(rawLabel).includes("non defini")) {
+    return { label: "" };
+  }
+
+  if (
+    (displayRole && isForbiddenRoleLabel(displayRole)) ||
+    isForbiddenRoleLabel(role)
+  ) {
+    return {
+      label: "Conflit",
+      title: `Libell\u00e9 invalide: ${rawLabel}`,
+    };
+  }
+
+  const allowedLabel = normalizeAllowedRoleLabel(rawLabel);
+
+  if (!allowedLabel) {
+    return {
+      label: "Conflit",
+      title: `Libell\u00e9 inconnu: ${rawLabel}`,
+    };
+  }
+
+  if (
+    normalizeRoleToken(allowedLabel).startsWith("contr") &&
+    isCrossShiftTransferredInRow(row)
+  ) {
+    return {
+      label: allowedLabel,
+      variant: "cross-shift-transfer",
+    };
+  }
+
+  return { label: allowedLabel };
+}
+
+function roleListTitle(rows: ApiRow[]) {
+  return rows
+    .map((row) => {
+      const status = getRoleStatus(row);
+      const rawLabel = getDisplayRole(row) || getRoleName(row);
+
+      return `${getEmployeeName(row) || "Employ\u00e9"}: ${
+        status.label || "Conflit"
+      }${status.title ? ` (${rawLabel})` : ""}`;
+    })
+    .join(" | ");
+}
+
+function getCellClass(
+  status: string,
+  shift?: "Matin" | "Soir" | "Nuit",
+  variant?: CellState["variant"]
+) {
   const normalized = normalizeText(status);
+  const roleToken = normalizeRoleToken(status);
+
+  if (
+    variant === "cross-shift-transfer" ||
+    variant === "transfer-marker" ||
+    normalized === "transfere"
+  ) {
+    return "border-emerald-500 bg-emerald-50 font-bold text-emerald-800";
+  }
 
   if (normalized === "repos") {
-    return "border-[rgba(225,227,228,0.22)] bg-[#45545b] text-[#e1e3e4]";
+    return "border-[var(--color-planning-repos-border)] bg-[var(--color-planning-repos-bg)] text-[var(--color-planning-repos-text)]";
   }
 
-  if (normalized === "nuit") {
-    return "border-red-300/25 bg-red-950/35 text-red-100";
+  if (normalized.includes("conflit")) {
+    return "border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] text-[var(--color-danger-text)]";
   }
 
-  if (normalized.includes("controle")) {
-    return "border-yellow-300/25 bg-yellow-500/10 font-bold text-yellow-100";
+  if (normalized.includes("manquante")) {
+    return "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]";
   }
 
-  if (normalized === "-") {
-    return "border-[rgba(172,189,197,0.12)] bg-[#303d44] text-[#7f929b]";
+  if ((shift === "Nuit" && normalized) || roleToken === "nuit") {
+    return "border-[var(--color-planning-night-border)] bg-[var(--color-planning-night-bg)] text-[var(--color-planning-night-text)]";
   }
 
-  return "border-[rgba(172,189,197,0.15)] bg-[#334149] text-[#e1e3e4]";
+  if (roleToken === "controle" || roleToken.startsWith("contr")) {
+    return "border-amber-400 bg-amber-100 font-bold text-amber-900";
+  }
+
+  if (!normalized || normalized === "-") {
+    return "border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]";
+  }
+
+  return "border-[var(--color-border)] bg-[var(--color-planning-normal-bg)] text-[var(--color-planning-normal-text)]";
 }
 
 function groupReposByDate(rows: ApiRow[]) {
@@ -497,6 +626,37 @@ function groupReposByDate(rows: ApiRow[]) {
   }, {});
 }
 
+function isAdminVisibleWarning(message: string) {
+  const normalizedMessage = normalizeText(message);
+  const compactMessage = normalizeRoleToken(message);
+
+  if (!normalizedMessage) {
+    return false;
+  }
+
+  if (
+    normalizedMessage.includes("aucun controle disponible") ||
+    compactMessage.includes("aucuncontroledisponible") ||
+    (normalizedMessage.includes("contient seulement") &&
+      normalizedMessage.includes("employe")) ||
+    (compactMessage.includes("contientseulement") &&
+      compactMessage.includes("employe")) ||
+    normalizedMessage.includes("conflit") ||
+    compactMessage.includes("conflit") ||
+    normalizedMessage.includes("erreur") ||
+    compactMessage.includes("erreur") ||
+    normalizedMessage.includes("invalide")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+function getAdminVisibleWarnings(warnings: string[]) {
+  return warnings.filter(isAdminVisibleWarning);
+}
+
 function Alert({
   tone,
   children,
@@ -505,9 +665,12 @@ function Alert({
   children: React.ReactNode;
 }) {
   const classes = {
-    success: "border-emerald-300/30 bg-emerald-500/10 text-emerald-100",
-    error: "border-red-300/30 bg-red-500/10 text-red-100",
-    warning: "border-yellow-300/30 bg-yellow-500/10 text-yellow-100",
+    success:
+      "border-[var(--color-success-border)] bg-[var(--color-success-bg)] text-[var(--color-success-text)]",
+    error:
+      "border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] text-[var(--color-danger-text)]",
+    warning:
+      "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]",
   };
 
   return <div className={`border px-4 py-3 text-sm ${classes[tone]}`}>{children}</div>;
@@ -516,10 +679,12 @@ function Alert({
 function WeeklyPlanningPreview({
   planningRows,
   reposRows,
+  transferEvents,
   week,
 }: {
   planningRows: ApiRow[];
   reposRows: ApiRow[];
+  transferEvents: TransferEvent[];
   week: GenerationResult["week"] | undefined;
 }) {
   const weekDays = buildWeekDays(week, planningRows, reposRows);
@@ -532,123 +697,311 @@ function WeeklyPlanningPreview({
     "SAMEDI",
     "DIMANCHE",
   ];
-  const planningByEmployeeDate = new Map<string, ApiRow>();
+  const planningByEmployeeDate = new Map<string, ApiRow[]>();
   const reposByEmployeeDate = new Map<string, ApiRow>();
-  const nightByEmployeeDate = new Map<string, ApiRow>();
-  const nightByDate = new Map<string, ApiRow>();
+  const nightByEmployeeDate = new Map<string, ApiRow[]>();
+  const nightByDate = new Map<string, ApiRow[]>();
+  const employeeDirectory = new Map<string, PlanningEmployee>();
+  const transferMarkersByEmployeeDatePeriod = new Map<string, TransferEvent>();
 
   planningRows.forEach((row) => {
     const employeeKey = getEmployeeKey(row);
     const date = getNormalizedDate(row);
     const shift = normalizeText(getShiftName(row));
+    const name = getEmployeeName(row);
+    const group = getGroupName(row);
 
-    if (!employeeKey || !date) {
+    if (!employeeKey || !date || !name) {
       return;
     }
 
-    planningByEmployeeDate.set(
-      `${employeeKey}|${date}|${shift}`,
-      row
-    );
+    employeeDirectory.set(employeeKey, { key: employeeKey, name, group });
+    const planningKey = `${employeeKey}|${date}|${shift}`;
+    const planningRowsForKey = planningByEmployeeDate.get(planningKey) || [];
+
+    planningRowsForKey.push(row);
+    planningByEmployeeDate.set(planningKey, planningRowsForKey);
 
     if (shift === "nuit") {
-      nightByEmployeeDate.set(`${employeeKey}|${date}`, row);
-      nightByDate.set(date, row);
+      const nightEmployeeKey = `${employeeKey}|${date}`;
+      const nightEmployeeRows = nightByEmployeeDate.get(nightEmployeeKey) || [];
+      const nightDateRows = nightByDate.get(date) || [];
+
+      nightEmployeeRows.push(row);
+      nightDateRows.push(row);
+      nightByEmployeeDate.set(nightEmployeeKey, nightEmployeeRows);
+      nightByDate.set(date, nightDateRows);
     }
   });
 
   reposRows.forEach((row) => {
     const employeeKey = getEmployeeKey(row);
     const date = getNormalizedDate(row);
+    const name = getEmployeeName(row);
+    const group = getGroupName(row);
 
-    if (!employeeKey || !date) {
+    if (!employeeKey || !date || !name) {
       return;
     }
 
+    employeeDirectory.set(employeeKey, { key: employeeKey, name, group });
     reposByEmployeeDate.set(`${employeeKey}|${date}`, row);
   });
 
+  transferEvents.forEach((event) => {
+    const employeeKey = getTransferEmployeeKey(event);
+    const date = normalizeDateValue(event.date);
+    const sourcePeriod = event.source_period || event.fromPeriodName;
+    const employeeName = getTransferEmployeeName(event);
+    const group = event.groupe || event.groupName || "";
+
+    if (!employeeKey || !date || !sourcePeriod || !employeeName) {
+      return;
+    }
+
+    employeeDirectory.set(employeeKey, {
+      key: employeeKey,
+      name: employeeName,
+      group,
+    });
+    transferMarkersByEmployeeDatePeriod.set(
+      `${employeeKey}|${date}|${normalizeText(sourcePeriod)}`,
+      event
+    );
+  });
+
   function getSectionEmployees(shift: "Matin" | "Soir") {
-    const employees = new Map<string, { key: string; name: string; group: string }>();
+    const normalizedShift = normalizeText(shift);
+    const employeesByKey = new Map<string, PlanningEmployee>();
+    const controlRowCountsByEmployeeKey = new Map<string, number>();
+    const transferredInEmployeeKeys = new Set<string>();
+    const groupsWithNonControlRows = new Set<string>();
 
     planningRows.forEach((row) => {
-      const employeeKey = getEmployeeKey(row);
-      const name = getEmployeeName(row);
-      const group = getGroupName(row);
-      const currentShift = normalizeText(getShiftName(row));
-      const matchesShift = normalizeText(shift) === currentShift;
+      if (normalizeText(getShiftName(row)) !== normalizedShift) {
+        return;
+      }
 
-      if (employeeKey && name && matchesShift) {
-        employees.set(employeeKey, { key: employeeKey, name, group });
+      const employeeKey = getEmployeeKey(row);
+      const employee = employeeKey ? employeeDirectory.get(employeeKey) : null;
+
+      if (employee) {
+        employeesByKey.set(employeeKey, employee);
+
+        if (isCrossShiftTransferredInRow(row)) {
+          transferredInEmployeeKeys.add(employeeKey);
+        }
+
+        if (normalizeText(getRoleStatus(row).label) === "controle") {
+          controlRowCountsByEmployeeKey.set(
+            employeeKey,
+            (controlRowCountsByEmployeeKey.get(employeeKey) || 0) + 1
+          );
+        } else {
+          groupsWithNonControlRows.add(normalizeText(employee.group));
+        }
       }
     });
 
-    return sortEmployeesByPreferredOrder(Array.from(employees.values()), shift);
+    transferEvents.forEach((event) => {
+      const sourcePeriod = event.source_period || event.fromPeriodName;
+
+      if (normalizeText(sourcePeriod) !== normalizedShift) {
+        return;
+      }
+
+      const employeeKey = getTransferEmployeeKey(event);
+      const employee = employeeKey ? employeeDirectory.get(employeeKey) : null;
+
+      if (employee) {
+        employeesByKey.set(employeeKey, employee);
+        groupsWithNonControlRows.add(normalizeText(employee.group));
+      }
+    });
+
+    employeeDirectory.forEach((employee) => {
+      const normalizedGroup = normalizeText(employee.group);
+      const normalizedName = normalizeText(employee.name);
+      const officialGroupOrder = OFFICIAL_EMPLOYEE_ORDER_BY_GROUP[normalizedGroup];
+      const fixedControlPeriod = FIXED_CONTROL_PERIOD_BY_EMPLOYEE[normalizedName];
+
+      if (
+        employeesByKey.has(employee.key) ||
+        !groupsWithNonControlRows.has(normalizedGroup) ||
+        !officialGroupOrder?.includes(normalizedName) ||
+        (fixedControlPeriod && fixedControlPeriod !== shift)
+      ) {
+        return;
+      }
+
+      const hasReposOrNightInWeek = weekDays.some((date) => {
+        const employeeDateKey = `${employee.key}|${date}`;
+
+        return (
+          reposByEmployeeDate.has(employeeDateKey) ||
+          (nightByEmployeeDate.get(employeeDateKey) || []).length > 0
+        );
+      });
+
+      if (hasReposOrNightInWeek) {
+        employeesByKey.set(employee.key, employee);
+      }
+    });
+
+    const controlEmployees = sortEmployeesByOfficialGroupOrder(
+      Array.from(controlRowCountsByEmployeeKey.keys())
+        .map((employeeKey) => employeesByKey.get(employeeKey))
+        .filter((employee): employee is PlanningEmployee => Boolean(employee))
+    );
+    const fixedControlEmployee = controlEmployees.find(
+      (employee) =>
+        FIXED_CONTROL_PERIOD_BY_EMPLOYEE[normalizeText(employee.name)] === shift
+    );
+    const primaryControlEmployee =
+      fixedControlEmployee ||
+      controlEmployees
+        .map((employee) => ({
+          employee,
+          total: controlRowCountsByEmployeeKey.get(employee.key) || 0,
+        }))
+        .sort((a, b) => b.total - a.total)[0]?.employee;
+    const primaryControlEmployeeKeys = new Set(
+      primaryControlEmployee ? [primaryControlEmployee.key] : []
+    );
+    const normalEmployees = Array.from(employeesByKey.values()).filter(
+      (employee) => !transferredInEmployeeKeys.has(employee.key)
+    );
+    const transferredInEmployees = sortEmployeesByOfficialGroupOrder(
+      Array.from(transferredInEmployeeKeys)
+        .map((employeeKey) => employeesByKey.get(employeeKey))
+        .filter((employee): employee is PlanningEmployee => Boolean(employee))
+    );
+
+    return [
+      ...sortSectionEmployeesWithControlInMiddle(
+        normalEmployees,
+        primaryControlEmployeeKeys
+      ),
+      ...transferredInEmployees,
+    ];
   }
 
-  function getEmployeeCell(employeeKey: string, date: string, shift: "Matin" | "Soir") {
+  function getDayShiftCell(
+    employeeKey: string,
+    date: string,
+    shift: "Matin" | "Soir"
+  ): CellState {
     const employeeDateKey = `${employeeKey}|${date}`;
     const planningKey = `${employeeDateKey}|${normalizeText(shift)}`;
 
     if (reposByEmployeeDate.has(employeeDateKey)) {
-      return "REPOS";
+      return { label: "REPOS" };
     }
 
-    if (nightByEmployeeDate.has(employeeDateKey)) {
-      return "NUIT";
+    const planningRowsForKey = planningByEmployeeDate.get(planningKey) || [];
+
+    if (planningRowsForKey.length > 1) {
+      return {
+        label: "Conflit",
+        title: roleListTitle(planningRowsForKey),
+      };
     }
 
-    const planningRow = planningByEmployeeDate.get(planningKey);
-
-    if (planningRow) {
-      return getRoleStatus(planningRow);
+    if (planningRowsForKey.length === 1) {
+      return getRoleStatus(planningRowsForKey[0]);
     }
 
-    return "-";
+    const nightRowsForEmployee = nightByEmployeeDate.get(employeeDateKey) || [];
+
+    if (nightRowsForEmployee.length > 0) {
+      const invalidNightRow = nightRowsForEmployee
+        .map(getRoleStatus)
+        .find((status) => status.label === "Conflit");
+
+      if (invalidNightRow) {
+        return {
+          label: "Conflit",
+          title: invalidNightRow.title,
+        };
+      }
+
+      return {
+        label: "Nuit",
+        title: roleListTitle(nightRowsForEmployee),
+      };
+    }
+
+    const transferMarker = transferMarkersByEmployeeDatePeriod.get(planningKey);
+
+    if (transferMarker) {
+      const targetPeriod =
+        transferMarker.target_period || transferMarker.toPeriodName || "";
+
+      return {
+        label: "Transf\u00e9r\u00e9",
+        title: targetPeriod
+          ? `Transf\u00e9r\u00e9 vers ${targetPeriod} pour Contr\u00f4le`
+          : "Transf\u00e9r\u00e9 pour Contr\u00f4le",
+        variant: "transfer-marker",
+      };
+    }
+
+    return { label: "" };
   }
 
-  function renderEmployeeSection(shift: "Matin" | "Soir") {
-    const employees = getSectionEmployees(shift);
+  function renderEmployeeSection(
+    title: "Matin" | "Soir" | "Nuit",
+    employees: PlanningEmployee[],
+    getCellStatus: (employeeKey: string, date: string) => CellState
+  ) {
+    const showGroupName = title !== "Nuit";
 
     return (
       <>
-        <tr className="bg-[#2f3d44]">
+        <tr className="bg-[var(--color-surface-muted)]">
           <th
             colSpan={8}
-            className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-center text-sm font-bold uppercase tracking-wide text-[#1AB6FF]"
+            className="border border-[var(--color-border)] px-4 py-3 text-center text-sm font-bold uppercase tracking-wide text-[var(--color-accent)]"
           >
-            {shift.toUpperCase()}
+            {title.toUpperCase()}
           </th>
         </tr>
         {employees.length === 0 ? (
           <tr>
             <td
               colSpan={8}
-              className="border border-[rgba(172,189,197,0.15)] px-4 py-4 text-sm text-[#acbdc5]"
+              className="border border-[var(--color-border)] px-4 py-4 text-sm text-[var(--color-text-muted)]"
             >
               Aucune ligne.
             </td>
           </tr>
         ) : (
           employees.map((employee) => (
-            <tr key={`${shift}-${employee.name}`}>
-              <th className="min-w-56 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-4 py-3 text-left align-top">
-                <span className="block text-sm font-semibold text-[#e1e3e4]">
+            <tr key={`${title}-${employee.name}`}>
+              <th className="min-w-56 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3 text-left align-top">
+                <span className="block text-sm font-semibold text-[var(--color-text)]">
                   {employee.name}
                 </span>
-                <span className="mt-1 block text-xs font-normal text-[#acbdc5]">
-                  {employee.group}
-                </span>
+                {showGroupName ? (
+                  <span className="mt-1 block text-xs font-normal text-[var(--color-text-muted)]">
+                    {employee.group}
+                  </span>
+                ) : null}
               </th>
               {weekDays.map((date) => {
-                const status = getEmployeeCell(employee.key, date, shift);
+                const status = getCellStatus(employee.key, date);
 
                 return (
                   <td
                     key={`${employee.name}-${date}`}
-                    className={`min-w-32 border px-3 py-3 text-center text-xs font-semibold ${getCellClass(status)}`}
+                    title={status.title}
+                    className={`min-w-32 border px-3 py-3 text-center text-xs font-semibold ${getCellClass(
+                      status.label,
+                      title,
+                      status.variant
+                    )}`}
                   >
-                    {status}
+                    {status.label}
                   </td>
                 );
               })}
@@ -662,33 +1015,33 @@ function WeeklyPlanningPreview({
   return (
     <section>
       <div className="mb-4">
-        <h2 className="text-xl font-semibold text-[#e1e3e4]">
+        <h2 className="text-xl font-semibold text-[var(--color-text)]">
           Aperçu du planning généré
         </h2>
-        <p className="mt-1 text-sm text-[#acbdc5]">
+        <p className="mt-1 text-sm text-[var(--color-text-muted)]">
           Vue hebdomadaire par employé et par jour
         </p>
       </div>
 
       {weekDays.length === 0 ? (
-        <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+        <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
           Aucun planning retourné.
         </p>
       ) : (
-        <div className="overflow-x-auto border border-[rgba(172,189,197,0.15)] bg-[#38474e]">
+        <div className="overflow-x-auto border border-[var(--color-border)] bg-[var(--color-surface)]">
           <table className="w-full min-w-[980px] border-collapse text-sm">
             <thead>
-              <tr className="bg-[#334149]">
-                <th className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-[#acbdc5]">
-                  Employé
+              <tr className="bg-[var(--color-surface-muted)]">
+                <th className="border border-[var(--color-border)] px-4 py-3 text-left text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+                  TAZA GARE ROUTIERE
                 </th>
                 {weekDays.map((date, index) => (
                   <th
                     key={date}
-                    className="border border-[rgba(172,189,197,0.15)] px-3 py-3 text-center text-xs font-bold uppercase tracking-wide text-[#acbdc5]"
+                    className="border border-[var(--color-border)] px-3 py-3 text-center text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]"
                   >
-                    <span className="block text-[#e1e3e4]">{dayLabels[index]}</span>
-                    <span className="mt-1 block font-normal normal-case text-[#acbdc5]">
+                    <span className="block text-[var(--color-text)]">{dayLabels[index]}</span>
+                    <span className="mt-1 block font-normal normal-case text-[var(--color-text-muted)]">
                       {date}
                     </span>
                   </th>
@@ -696,34 +1049,66 @@ function WeeklyPlanningPreview({
               </tr>
             </thead>
             <tbody>
-              {renderEmployeeSection("Matin")}
-              {renderEmployeeSection("Soir")}
-              <tr className="bg-[#2f3d44]">
+              {renderEmployeeSection(
+                "Matin",
+                getSectionEmployees("Matin"),
+                (employeeKey, date) => getDayShiftCell(employeeKey, date, "Matin")
+              )}
+              {renderEmployeeSection(
+                "Soir",
+                getSectionEmployees("Soir"),
+                (employeeKey, date) => getDayShiftCell(employeeKey, date, "Soir")
+              )}
+              <tr className="bg-[var(--color-surface-muted)]">
                 <th
                   colSpan={8}
-                  className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-center text-sm font-bold uppercase tracking-wide text-[#1AB6FF]"
+                  className="border border-[var(--color-border)] px-4 py-3 text-center text-sm font-bold uppercase tracking-wide text-[var(--color-accent)]"
                 >
                   NUIT
                 </th>
               </tr>
               <tr>
-                <th className="min-w-56 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-4 py-3 text-left text-sm font-semibold text-[#e1e3e4]">
+                <th className="min-w-56 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3 text-left text-sm font-semibold text-[var(--color-text)]">
                   Employé Nuit
                 </th>
                 {weekDays.map((date) => {
-                  const nightRow = nightByDate.get(date);
-                  const employeeName = nightRow
-                    ? getEmployeeName(nightRow) || "Employé non défini"
-                    : "-";
-
+                  const nightRowsForDate = nightByDate.get(date) || [];
+                  const singleNightStatus =
+                    nightRowsForDate.length === 1
+                      ? getRoleStatus(nightRowsForDate[0])
+                      : null;
+                  const status: CellState =
+                    nightRowsForDate.length === 0
+                      ? {
+                          label: "Nuit manquante",
+                        }
+                      : nightRowsForDate.length > 1
+                        ? {
+                            label: "Conflit Nuit",
+                            title: roleListTitle(nightRowsForDate),
+                          }
+                        : singleNightStatus?.label === "Conflit"
+                          ? {
+                              label: "Conflit Nuit",
+                              title: singleNightStatus.title,
+                            }
+                          : {
+                            label:
+                              getEmployeeName(nightRowsForDate[0]) ||
+                              "Employ\u00e9 non d\u00e9fini",
+                            title: "Nuit",
+                          };
                   return (
                     <td
                       key={`night-${date}`}
+                      title={status.title}
                       className={`min-w-32 border px-3 py-3 text-center text-xs font-semibold ${getCellClass(
-                        nightRow ? "NUIT" : "-"
+                        status.label,
+                        "Nuit",
+                        status.variant
                       )}`}
                     >
-                      {employeeName}
+                      {status.label}
                     </td>
                   );
                 })}
@@ -770,21 +1155,21 @@ function ReposPreview({ rows }: { rows: ApiRow[] }) {
     const normalizedType = normalizeText(type).replace(/\s/g, "");
 
     if (normalizedType === "2j") {
-      return "border-cyan-300/20 bg-cyan-400/10 text-cyan-100";
+      return "border-[var(--color-badge-border)] bg-[var(--color-badge-bg)] text-[var(--color-badge-text)]";
     }
 
-    return "border-emerald-300/20 bg-emerald-400/10 text-emerald-100";
+    return "border-[var(--color-badge-success-border)] bg-[var(--color-badge-success-bg)] text-[var(--color-badge-success-text)]";
   }
 
   return (
     <section className="space-y-4">
       <div>
-        <h2 className="text-xl font-semibold text-[#e1e3e4]">
+        <h2 className="text-xl font-semibold text-[var(--color-text)]">
           Aperçu des repos générés
         </h2>
       </div>
       {dates.length === 0 ? (
-        <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+        <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
           Aucun repos retourné.
         </p>
       ) : (
@@ -793,12 +1178,12 @@ function ReposPreview({ rows }: { rows: ApiRow[] }) {
             {stats.map((stat) => (
               <article
                 key={stat.label}
-                className="rounded border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4"
+                className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
               >
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
                   {stat.label}
                 </p>
-                <p className="mt-2 text-2xl font-semibold text-[#e1e3e4]">
+                <p className="mt-2 text-2xl font-semibold text-[var(--color-text)]">
                   {stat.value}
                 </p>
               </article>
@@ -815,20 +1200,20 @@ function ReposPreview({ rows }: { rows: ApiRow[] }) {
               return (
                 <section
                   key={date}
-                  className="rounded border border-[rgba(172,189,197,0.15)] bg-[#38474e]"
+                  className="rounded border border-[var(--color-border)] bg-[var(--color-surface)]"
                 >
-                  <div className="border-b border-[rgba(172,189,197,0.15)] px-4 py-3">
+                  <div className="border-b border-[var(--color-border)] px-4 py-3">
                     <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-base font-semibold text-[#e1e3e4]">
+                      <h3 className="text-base font-semibold text-[var(--color-text)]">
                         {date}
                       </h3>
-                      <span className="rounded border border-[rgba(26,182,255,0.22)] bg-[#1AB6FF]/10 px-2.5 py-1 text-xs font-semibold text-[#bdeaff]">
+                      <span className="rounded border border-[var(--color-badge-border)] bg-[var(--color-badge-bg)] px-2.5 py-1 text-xs font-semibold text-[var(--color-badge-text)]">
                         {reposForDate.length} repos
                       </span>
                     </div>
-                    <div className="mt-3 h-1.5 overflow-hidden rounded bg-[#334149]">
+                    <div className="mt-3 h-1.5 overflow-hidden rounded bg-[var(--color-surface-muted)]">
                       <div
-                        className="h-full rounded bg-[#1AB6FF]"
+                        className="h-full rounded bg-[var(--color-accent)]"
                         style={{ width: progressWidth }}
                       />
                     </div>
@@ -840,10 +1225,10 @@ function ReposPreview({ rows }: { rows: ApiRow[] }) {
                       return (
                         <article
                           key={row.id || `${date}-${index}`}
-                          className="rounded border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3"
+                          className="rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3"
                         >
                           <div className="flex items-center justify-between gap-3">
-                            <h4 className="min-w-0 text-sm font-semibold text-[#e1e3e4]">
+                            <h4 className="min-w-0 text-sm font-semibold text-[var(--color-text)]">
                               {getEmployeeName(row) || "Employé non défini"}
                             </h4>
                             <span
@@ -854,7 +1239,7 @@ function ReposPreview({ rows }: { rows: ApiRow[] }) {
                               {reposType}
                             </span>
                           </div>
-                          <p className="mt-1 text-xs text-[#acbdc5]">
+                          <p className="mt-1 text-xs text-[var(--color-text-muted)]">
                             Type: {reposType}
                           </p>
                         </article>
@@ -873,12 +1258,10 @@ function ReposPreview({ rows }: { rows: ApiRow[] }) {
 
 export default function AdminPlanningPage() {
   const router = useRouter();
-  const fetchRequestId = useRef(0);
   const [startDate, setStartDate] = useState(getCurrentWeekMonday);
   const [overwrite, setOverwrite] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
-  const [isFetchingExisting, setIsFetchingExisting] = useState(false);
-  const [hasFetchedExistingWeek, setHasFetchedExistingWeek] = useState(false);
+  const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [backendErrors, setBackendErrors] = useState<string[]>([]);
@@ -887,10 +1270,21 @@ export default function AdminPlanningPage() {
   const planningRows = result?.planning || [];
   const reposRows = result?.repos || [];
   const warnings = result?.warnings || [];
+  const adminVisibleWarnings = getAdminVisibleWarnings(warnings);
+  const showReposPreview = false;
   const calculatedWeekNumber = useMemo(
     () => getCalculatedWeekNumber(startDate),
     [startDate]
   );
+  const selectedWeekDateRange = useMemo(() => {
+    const endDate = addDays(startDate, 6);
+
+    if (calculatedWeekNumber === null || !startDate || !endDate) {
+      return "-";
+    }
+
+    return `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}`;
+  }, [calculatedWeekNumber, startDate]);
   const startDateValidationMessage =
     calculatedWeekNumber === null
       ? `La date doit être à partir du ${formatDateForDisplay(
@@ -916,52 +1310,8 @@ export default function AdminPlanningPage() {
 
     if (!token) {
       router.push("/");
-      return;
     }
-
-    if (calculatedWeekNumber === null) {
-      setResult(null);
-      setHasFetchedExistingWeek(false);
-      setIsFetchingExisting(false);
-      return;
-    }
-
-    const requestId = fetchRequestId.current + 1;
-    fetchRequestId.current = requestId;
-
-    setIsFetchingExisting(true);
-    setHasFetchedExistingWeek(false);
-    setResult(null);
-    setSuccessMessage("");
-    setErrorMessage("");
-    setBackendErrors([]);
-
-    fetchExistingWeekPlanning(startDate, token, calculatedWeekNumber)
-      .then((existingResult) => {
-        if (fetchRequestId.current !== requestId) {
-          return;
-        }
-
-        setResult(existingResult);
-        setHasFetchedExistingWeek(true);
-      })
-      .catch(() => {
-        if (fetchRequestId.current !== requestId) {
-          return;
-        }
-
-        setResult(null);
-        setHasFetchedExistingWeek(false);
-        setErrorMessage("Impossible de charger le planning de la semaine.");
-      })
-      .finally(() => {
-        if (fetchRequestId.current !== requestId) {
-          return;
-        }
-
-        setIsFetchingExisting(false);
-      });
-  }, [calculatedWeekNumber, router, startDate]);
+  }, [router]);
 
   function getSelectedWeek() {
     const weekDays = getWeekDatesFromStart(startDate);
@@ -975,21 +1325,13 @@ export default function AdminPlanningPage() {
 
   function renderEmptyWeekState() {
     return (
-      <section className="rounded border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5">
-        <h2 className="text-base font-semibold text-[#e1e3e4]">
+      <section className="rounded border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5">
+        <h2 className="text-base font-semibold text-[var(--color-text)]">
           Aucun planning trouvé pour cette semaine.
         </h2>
-        <p className="mt-1 text-sm text-[#acbdc5]">
+        <p className="mt-1 text-sm text-[var(--color-text-muted)]">
           Vous pouvez générer le planning avec le bouton ci-dessus.
         </p>
-      </section>
-    );
-  }
-
-  function renderExistingWeekLoading() {
-    return (
-      <section className="rounded border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm font-semibold text-[#acbdc5]">
-        Chargement du planning de la semaine...
       </section>
     );
   }
@@ -999,6 +1341,81 @@ export default function AdminPlanningPage() {
     localStorage.removeItem("user");
     localStorage.removeItem("keepSignedIn");
     router.push("/");
+  }
+
+  async function handleExportExcel() {
+    if (calculatedWeekNumber === null) {
+      setErrorMessage(startDateValidationMessage);
+      setBackendErrors([]);
+      return;
+    }
+
+    const token = localStorage.getItem("token");
+
+    if (!token) {
+      router.push("/");
+      return;
+    }
+
+    const endDate = addDays(startDate, 6) || startDate;
+
+    setIsExportingExcel(true);
+    setErrorMessage("");
+    setBackendErrors([]);
+
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/api/exports/planning/excel?startDate=${encodeURIComponent(
+          startDate
+        )}&endDate=${encodeURIComponent(endDate)}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        const text = await response.text();
+        let message = "Impossible d'exporter le fichier Excel.";
+
+        if (text) {
+          try {
+            const payload = JSON.parse(text) as { message?: string };
+
+            if (payload.message) {
+              message = translateUserMessage(payload.message);
+            }
+          } catch {
+            message = translateUserMessage(text);
+          }
+        }
+
+        throw new Error(message);
+      }
+
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+
+      link.href = downloadUrl;
+      link.download = getDownloadFilename(
+        response.headers.get("Content-Disposition"),
+        `planning-${startDate}-to-${endDate}.xlsx`
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error
+          ? error.message
+          : "Impossible d'exporter le fichier Excel."
+      );
+    } finally {
+      setIsExportingExcel(false);
+    }
   }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -1018,10 +1435,7 @@ export default function AdminPlanningPage() {
       return;
     }
 
-    fetchRequestId.current += 1;
     setIsLoading(true);
-    setIsFetchingExisting(false);
-    setHasFetchedExistingWeek(false);
     setSuccessMessage("");
     setErrorMessage("");
     setBackendErrors([]);
@@ -1029,7 +1443,7 @@ export default function AdminPlanningPage() {
 
     try {
       const response = await fetch(
-        "http://localhost:5000/api/planning-generation/week",
+        `${API_BASE_URL}/api/planning-generation/week`,
         {
           method: "POST",
           headers: {
@@ -1045,8 +1459,12 @@ export default function AdminPlanningPage() {
       const data = (await response.json()) as GenerationResult;
 
       if (!response.ok) {
-        setErrorMessage(data.message || "Impossible de générer le planning.");
-        setBackendErrors(Array.isArray(data.errors) ? data.errors : []);
+        setErrorMessage(
+          translateUserMessage(data.message || "Impossible de générer le planning.")
+        );
+        setBackendErrors(
+          Array.isArray(data.errors) ? translateUserMessages(data.errors) : []
+        );
         return;
       }
 
@@ -1054,7 +1472,6 @@ export default function AdminPlanningPage() {
         ...data,
         week: data.week || getSelectedWeek(),
       });
-      setHasFetchedExistingWeek(true);
       setSuccessMessage("Planning généré avec succès.");
     } catch {
       setErrorMessage("Impossible de contacter le serveur backend.");
@@ -1064,26 +1481,26 @@ export default function AdminPlanningPage() {
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
+    <main className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
       <AdminNavbar onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
+          <h1 className="text-2xl font-semibold text-[var(--color-text)] sm:text-3xl">
             Gestion du planning
           </h1>
-          <p className="mt-2 text-sm text-[#acbdc5]">
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
             Générer le planning hebdomadaire des employés
           </p>
         </div>
 
         <form
           onSubmit={handleSubmit}
-          className="mb-6 rounded border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 shadow-[0_16px_40px_rgba(17,24,28,0.14)] sm:p-5"
+          className="mb-6 rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[0_16px_40px_rgba(17,24,28,0.14)] sm:p-5"
         >
           <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch">
             <div className="space-y-4">
-              <label className="block text-sm font-semibold text-[#acbdc5]">
+              <label className="block text-sm font-semibold text-[var(--color-text-muted)]">
                 <span className="mb-2 block text-xs uppercase tracking-wide">
                   Date de début
                 </span>
@@ -1091,25 +1508,25 @@ export default function AdminPlanningPage() {
                   type="date"
                   value={startDate}
                   onChange={(event) => setStartDate(event.target.value)}
-                  className="h-11 w-full rounded border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-sm font-semibold text-[#e1e3e4] outline-none transition placeholder:text-[#acbdc5] focus:border-[#1AB6FF] focus:ring-2 focus:ring-[#1AB6FF]/20"
+                  className="h-11 w-full rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 text-sm font-semibold text-[var(--color-text)] outline-none transition placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)] focus:ring-2 focus:ring-[var(--color-accent)]/20"
                   required
                 />
-                <span className="mt-2 block text-xs font-normal text-[#acbdc5]">
+                <span className="mt-2 block text-xs font-normal text-[var(--color-text-muted)]">
                   La date doit être un lundi.
                 </span>
                 {startDateValidationMessage ? (
-                  <span className="mt-1 block text-xs font-semibold text-red-100">
+                  <span className="mt-1 block text-xs font-semibold text-[var(--color-danger-inline-text)]">
                     {startDateValidationMessage}
                   </span>
                 ) : null}
               </label>
 
-              <label className="flex items-start gap-3 rounded border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3 text-sm font-semibold text-[#e1e3e4]">
+              <label className="flex items-start gap-3 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-sm font-semibold text-[var(--color-text)]">
                 <input
                   type="checkbox"
                   checked={overwrite}
                   onChange={(event) => setOverwrite(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-[#1AB6FF]"
+                  className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)]"
                 />
                 <span className="leading-5">
                   Remplacer le planning existant pour cette semaine
@@ -1118,21 +1535,29 @@ export default function AdminPlanningPage() {
             </div>
 
             <div className="flex flex-col gap-4">
-              <div className="rounded border border-[rgba(172,189,197,0.15)] border-l-[#1AB6FF] bg-[#334149] px-4 py-4 lg:flex-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+              <div className="rounded border border-[var(--color-border)] border-l-[var(--color-accent)] bg-[var(--color-surface-muted)] px-4 py-4 lg:flex-1">
+                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
                   Semaine calculée automatiquement
                 </p>
-                <p className="mt-3 text-2xl font-semibold text-[#e1e3e4]">
-                  {calculatedWeekNumber ? `Semaine ${calculatedWeekNumber}` : "-"}
+                <p className="mt-3 text-2xl font-semibold text-[var(--color-text)]">
+                  {selectedWeekDateRange}
                 </p>
               </div>
 
               <button
                 type="submit"
-                disabled={isLoading || calculatedWeekNumber === null}
-                className="h-11 rounded bg-[#1AB6FF] px-5 text-sm font-bold text-white shadow-[0_10px_24px_rgba(26,182,255,0.18)] transition hover:bg-[#169CDC] focus:outline-none focus:ring-2 focus:ring-[#1AB6FF]/35 focus:ring-offset-2 focus:ring-offset-[#38474e] disabled:cursor-not-allowed disabled:bg-[#169CDC] disabled:opacity-70"
+                disabled={isLoading || isExportingExcel || calculatedWeekNumber === null}
+                className="h-11 rounded bg-[var(--color-accent)] px-5 text-sm font-bold text-white shadow-[0_10px_24px_rgba(26,182,255,0.18)] transition hover:bg-[var(--color-accent-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/35 focus:ring-offset-2 focus:ring-offset-[var(--color-surface)] disabled:cursor-not-allowed disabled:bg-[var(--color-accent-hover)] disabled:opacity-70"
               >
                 {isLoading ? "Génération..." : "Générer planning"}
+              </button>
+              <button
+                type="button"
+                onClick={handleExportExcel}
+                disabled={isLoading || isExportingExcel || calculatedWeekNumber === null}
+                className="h-11 rounded border border-emerald-700 bg-emerald-600 px-5 text-sm font-bold text-white transition hover:bg-emerald-700 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 focus:ring-offset-2 focus:ring-offset-[var(--color-surface)] disabled:cursor-not-allowed disabled:bg-emerald-700 disabled:opacity-70"
+              >
+                {isExportingExcel ? "Export Excel..." : "Exporter Excel"}
               </button>
             </div>
           </div>
@@ -1159,33 +1584,31 @@ export default function AdminPlanningPage() {
             </Alert>
           ) : null}
 
-          {warnings.length > 0 ? (
+          {adminVisibleWarnings.length > 0 ? (
             <Alert tone="warning">
               <p className="font-semibold">Avertissements</p>
               <ul className="mt-2 list-disc space-y-1 pl-5">
-                {warnings.map((warning) => (
+                {adminVisibleWarnings.map((warning) => (
                   <li key={warning}>{warning}</li>
                 ))}
               </ul>
             </Alert>
           ) : null}
 
-          {isFetchingExisting ? renderExistingWeekLoading() : null}
+          {result && planningRows.length === 0 ? renderEmptyWeekState() : null}
 
-          {!isFetchingExisting &&
-          hasFetchedExistingWeek &&
-          (!result || planningRows.length === 0)
-            ? renderEmptyWeekState()
-            : null}
-
-          {!isFetchingExisting && result && planningRows.length > 0 ? (
+          {result && planningRows.length > 0 ? (
             <>
               <WeeklyPlanningPreview
                 planningRows={planningRows}
                 reposRows={reposRows}
+                transferEvents={[
+                  ...(result.transferMarkers || []),
+                  ...(result.transferEvents || []),
+                ]}
                 week={result.week}
               />
-              <ReposPreview rows={reposRows} />
+              {showReposPreview ? <ReposPreview rows={reposRows} /> : null}
             </>
           ) : null}
         </div>

@@ -50,7 +50,7 @@ function getStatusClasses(status: string) {
   }
 
   if (status === "Refus\u00e9") {
-    return "border-red-300/25 bg-red-400/10 text-red-100";
+    return "border-[var(--color-badge-danger-border)] bg-[var(--color-badge-danger-bg)] text-[var(--color-badge-danger-text)]";
   }
 
   return "border-yellow-300/25 bg-yellow-400/10 text-yellow-100";
@@ -238,7 +238,7 @@ export default function AdminCertificatsPage() {
         </div>
 
         {errorMessage ? (
-          <p className="mb-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <p className="mb-5 border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger-text)]">
             {errorMessage}
           </p>
         ) : null}

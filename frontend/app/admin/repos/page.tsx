@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import AdminNavbar from "@/components/AdminNavbar";
+import { API_BASE_URL, translateUserMessage } from "@/lib/api";
 
 type DayOption = "yesterday" | "today" | "tomorrow";
 type NestedRecord = Record<string, unknown>;
@@ -116,11 +117,11 @@ function SummaryCard({
   value: string | number;
 }) {
   return (
-    <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+    <article className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
         {label}
       </p>
-      <p className="mt-2 text-lg font-semibold text-[#e1e3e4]">{value}</p>
+      <p className="mt-2 text-lg font-semibold text-[var(--color-text)]">{value}</p>
     </article>
   );
 }
@@ -162,7 +163,7 @@ export default function AdminReposPage() {
 
       try {
         const response = await fetch(
-          `http://localhost:5000/api/repos/date/${selectedDate}`,
+          `${API_BASE_URL}/api/repos/date/${selectedDate}`,
           {
             headers: {
               Authorization: `Bearer ${authToken}`,
@@ -176,7 +177,9 @@ export default function AdminReposPage() {
         }
 
         if (!response.ok) {
-          setError(data?.message || "Impossible de charger les repos.");
+          setError(
+            translateUserMessage(data?.message || "Impossible de charger les repos.")
+          );
           setReposRows([]);
           return;
         }
@@ -202,26 +205,26 @@ export default function AdminReposPage() {
   }, [router, selectedDate]);
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
+    <main className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
       <AdminNavbar onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
+            <h1 className="text-2xl font-semibold text-[var(--color-text)] sm:text-3xl">
               Gestion des repos
             </h1>
-            <p className="mt-2 text-sm text-[#acbdc5]">
+            <p className="mt-2 text-sm text-[var(--color-text-muted)]">
               Consulter les repos des employés par date
             </p>
           </div>
 
-          <label className="flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+          <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
             Date
             <select
               value={selectedDay}
               onChange={(event) => setSelectedDay(event.target.value as DayOption)}
-              className="h-10 min-w-44 border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-3 text-sm font-semibold text-[#e1e3e4] outline-none transition hover:border-[#169CDC] focus:border-[#1AB6FF]"
+              className="h-10 min-w-44 border border-[var(--color-border)] bg-[var(--color-surface)] px-3 text-sm font-semibold text-[var(--color-text)] outline-none transition hover:border-[var(--color-accent-hover)] focus:border-[var(--color-accent)]"
             >
               {dayOptions.map((option) => (
                 <option key={option.value} value={option.value}>
@@ -238,15 +241,15 @@ export default function AdminReposPage() {
         </div>
 
         {isLoading ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
             Chargement des repos...
           </p>
         ) : error ? (
-          <p className="border border-red-300/30 bg-red-500/10 px-4 py-5 text-sm text-red-100">
+          <p className="border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-5 text-sm text-[var(--color-danger-text)]">
             {error}
           </p>
         ) : reposRows.length === 0 ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
             Aucun repos trouvé pour cette date.
           </p>
         ) : (
@@ -254,16 +257,16 @@ export default function AdminReposPage() {
             {reposRows.map((row, index) => (
               <article
                 key={row.id || `repos-${index}`}
-                className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4"
+                className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
               >
-                <p className="text-xs font-semibold text-[#acbdc5]">
+                <p className="text-xs font-semibold text-[var(--color-text-muted)]">
                   {getDateValue(row)}
                 </p>
-                <h2 className="mt-2 text-base font-semibold text-[#e1e3e4]">
+                <h2 className="mt-2 text-base font-semibold text-[var(--color-text)]">
                   {getEmployeeName(row) || "Employé non défini"}
                 </h2>
-                <p className="mt-1 text-sm text-[#acbdc5]">{getGroupName(row)}</p>
-                <p className="mt-3 w-fit border border-[rgba(172,189,197,0.15)] px-2 py-1 text-xs font-semibold text-[#acbdc5]">
+                <p className="mt-1 text-sm text-[var(--color-text-muted)]">{getGroupName(row)}</p>
+                <p className="mt-3 w-fit border border-[var(--color-badge-border)] bg-[var(--color-badge-bg)] px-2 py-1 text-xs font-semibold text-[var(--color-badge-text)]">
                   Type: {getReposType(row)}
                 </p>
               </article>

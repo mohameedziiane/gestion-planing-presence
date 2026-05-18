@@ -1,7 +1,8 @@
 const db = require("../config/db");
-const { sendPushToUsers } = require("./notification.service");
+const { getCurrentCasablancaDateTime } = require("../utils/casablancaDateTime");
 
 const STATUS_ABSENT = "Absent";
+const NIGHT_SHIFT_SYNC_RELEASE_TIME = "06:00";
 
 const absenceSelectQuery = `
   SELECT
@@ -59,6 +60,46 @@ function validateDateInput(value, fieldName = "date") {
   return normalizedDate;
 }
 
+function getNextDateString(date) {
+  const parsedDate = new Date(`${date}T00:00:00.000Z`);
+  parsedDate.setUTCDate(parsedDate.getUTCDate() + 1);
+
+  return parsedDate.toISOString().slice(0, 10);
+}
+
+function getSyncAllowedAfterDateTime(date) {
+  return `${getNextDateString(date)} ${NIGHT_SHIFT_SYNC_RELEASE_TIME}`;
+}
+
+function validateSyncDateAllowed(date) {
+  const normalizedDate = validateDateInput(date);
+  const currentCasablanca = getCurrentCasablancaDateTime();
+  const currentDateTime = `${currentCasablanca.date} ${currentCasablanca.time.slice(
+    0,
+    5
+  )}`;
+  const allowedAfterDateTime = getSyncAllowedAfterDateTime(normalizedDate);
+
+  if (normalizedDate > currentCasablanca.date) {
+    throw new AbsenceServiceError(
+      400,
+      "La synchronisation des absences ne peut pas \u00eatre ex\u00e9cut\u00e9e pour une date future."
+    );
+  }
+
+  if (currentDateTime < allowedAfterDateTime) {
+    throw new AbsenceServiceError(
+      403,
+      `La synchronisation des absences pour cette date sera autoris\u00e9e apr\u00e8s la fin du service Nuit, \u00e0 partir de ${allowedAfterDateTime}.`
+    );
+  }
+
+  return {
+    date: normalizedDate,
+    allowedAfter: allowedAfterDateTime,
+  };
+}
+
 async function getAbsencesByDate(date, connection = db) {
   const normalizedDate = validateDateInput(date);
   const [rows] = await connection.query(
@@ -77,93 +118,84 @@ async function getAbsencesByDate(date, connection = db) {
   };
 }
 
-async function sendAbsenceNotification(date, insertedCount) {
-  if (insertedCount <= 0) {
-    return;
-  }
-
-  try {
-    const [adminRows] = await db.query(
-      `
-        SELECT u.id
-        FROM utilisateurs u
-        JOIN roles r ON r.id = u.role_id
-        WHERE r.nom = 'admin'
-        ORDER BY u.id ASC
-      `
-    );
-    const adminUserIds = adminRows.map((row) => row.id);
-
-    if (adminUserIds.length === 0) {
-      return;
-    }
-
-    await sendPushToUsers(
-      adminUserIds,
-      "Absence detected",
-      `Absence detected: ${insertedCount} employee(s) absent on ${date}`,
-      {
-        type: "absence_detection",
-        date,
-        inserted_absences: insertedCount,
-      }
-    );
-  } catch (error) {
-    // Notification delivery must not block absence detection.
-    console.error("Failed to send absence notification:", error.message);
-  }
-}
-
-async function detectAbsences(date) {
-  const normalizedDate = validateDateInput(date);
+async function synchronizeAbsences(date) {
+  const { date: normalizedDate } = validateSyncDateAllowed(date);
   const connection = await db.getConnection();
 
   try {
     await connection.beginTransaction();
 
-    const [plannedRows] = await connection.query(
+    const [planningRows] = await connection.query(
       `
-        SELECT DISTINCT
-          p.employe_id,
-          e.prenom,
-          e.nom,
-          e.groupe_id,
-          g.nom AS groupe
+        SELECT DISTINCT p.employe_id
         FROM planning p
-        JOIN employes e ON e.id = p.employe_id
-        JOIN groupes g ON g.id = e.groupe_id
         JOIN roles_travail rt ON rt.id = p.role_travail_id
-        LEFT JOIN repos r
-          ON r.employe_id = p.employe_id
-          AND r._date = p._date
         WHERE p._date = ?
-          AND r.id IS NULL
           AND rt.nom <> 'Repos'
         ORDER BY p.employe_id ASC
       `,
       [normalizedDate]
     );
-    const [presenceRows] = await connection.query(
+    const planningEmployeeIds = planningRows.map((row) => Number(row.employe_id));
+
+    if (planningEmployeeIds.length === 0) {
+      await connection.commit();
+
+      return {
+        date: normalizedDate,
+        createdCount: 0,
+        skippedReposCount: 0,
+        skippedAlreadyRegisteredCount: 0,
+        totalPlannedEmployees: 0,
+        absences: [],
+      };
+    }
+
+    const [reposRows] = await connection.query(
       `
-        SELECT id, employe_id, statut
-        FROM presence
+        SELECT DISTINCT employe_id
+        FROM repos
         WHERE _date = ?
+          AND employe_id IN (?)
       `,
-      [normalizedDate]
+      [normalizedDate, planningEmployeeIds]
     );
-    const presenceByEmployeId = new Map(
-      presenceRows.map((row) => [Number(row.employe_id), row])
+    const reposEmployeeIds = new Set(
+      reposRows.map((row) => Number(row.employe_id))
     );
-    const absentEmployees = plannedRows.filter((employee) => {
-      const presenceRecord = presenceByEmployeId.get(Number(employee.employe_id));
+    const employeeIdsWithoutRepos = planningEmployeeIds.filter(
+      (employeId) => !reposEmployeeIds.has(employeId)
+    );
 
-      return !presenceRecord;
-    });
+    let presenceRows = [];
 
-    if (absentEmployees.length > 0) {
-      const valuesClause = absentEmployees.map(() => "(?, ?, ?, ?, ?)").join(", ");
-      const queryParams = absentEmployees.flatMap((employee) => [
-        employee.employe_id,
+    if (employeeIdsWithoutRepos.length > 0) {
+      const [rows] = await connection.query(
+        `
+          SELECT DISTINCT employe_id
+          FROM presence
+          WHERE _date = ?
+            AND employe_id IN (?)
+        `,
+        [normalizedDate, employeeIdsWithoutRepos]
+      );
+
+      presenceRows = rows;
+    }
+
+    const presenceEmployeeIds = new Set(
+      presenceRows.map((row) => Number(row.employe_id))
+    );
+    const employeeIdsToInsert = employeeIdsWithoutRepos.filter(
+      (employeId) => !presenceEmployeeIds.has(employeId)
+    );
+
+    if (employeeIdsToInsert.length > 0) {
+      const valuesClause = employeeIdsToInsert
+        .map(() => "(?, ?, ?, ?, ?)")
+        .join(", ");
+      const queryParams = employeeIdsToInsert.flatMap((employeId) => [
+        employeId,
         normalizedDate,
         null,
         STATUS_ABSENT,
@@ -188,12 +220,13 @@ async function detectAbsences(date) {
     const result = await getAbsencesByDate(normalizedDate, connection);
 
     await connection.commit();
-    await sendAbsenceNotification(normalizedDate, absentEmployees.length);
 
     return {
-      message: "Absence detection completed",
       date: normalizedDate,
-      inserted_absences: absentEmployees.length,
+      createdCount: employeeIdsToInsert.length,
+      skippedReposCount: reposEmployeeIds.size,
+      skippedAlreadyRegisteredCount: presenceEmployeeIds.size,
+      totalPlannedEmployees: planningEmployeeIds.length,
       absences: result.absences,
     };
   } catch (error) {
@@ -204,8 +237,24 @@ async function detectAbsences(date) {
   }
 }
 
+async function detectAbsences(date) {
+  const result = await synchronizeAbsences(date);
+
+  return {
+    message: "Absence detection completed",
+    date: result.date,
+    inserted_absences: result.createdCount,
+    createdCount: result.createdCount,
+    skippedReposCount: result.skippedReposCount,
+    skippedAlreadyRegisteredCount: result.skippedAlreadyRegisteredCount,
+    totalPlannedEmployees: result.totalPlannedEmployees,
+    absences: result.absences,
+  };
+}
+
 module.exports = {
   AbsenceServiceError,
   detectAbsences,
   getAbsencesByDate,
+  synchronizeAbsences,
 };

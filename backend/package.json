@@ -17,10 +17,9 @@
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
+    "exceljs": "^4.4.0",
     "express": "^5.2.1",
-    "firebase-admin": "^13.8.0",
     "jsonwebtoken": "^9.0.3",
-    "mysql2": "^3.22.3",
-    "pdfkit": "^0.18.0"
+    "mysql2": "^3.22.3"
   }
 }

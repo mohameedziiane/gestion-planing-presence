@@ -72,7 +72,7 @@ function getStatusClasses(status: string) {
   }
 
   if (status === "Refus\u00e9") {
-    return "border-red-300/25 bg-red-400/10 text-red-100";
+    return "border-[var(--color-badge-danger-border)] bg-[var(--color-badge-danger-bg)] text-[var(--color-badge-danger-text)]";
   }
 
   return "border-yellow-300/25 bg-yellow-400/10 text-yellow-100";
@@ -223,11 +223,11 @@ export default function EmployeCertificatsPage() {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
-      <header className="border-b border-[rgba(172,189,197,0.15)] bg-[#38474e]">
+      <header className="sticky top-0 z-50 border-b border-[rgba(172,189,197,0.15)] bg-[#38474e]">
         <nav className="mx-auto flex min-h-[78px] w-full max-w-[1180px] flex-wrap items-center justify-between gap-4 px-4 py-3 sm:px-6">
           <Link href="/employe" className="flex items-center gap-3">
             <Image
-              src="/logo.webp"
+              src="/logo.png"
               alt="Gare Routiere de Taza"
               width={48}
               height={48}
@@ -275,7 +275,7 @@ export default function EmployeCertificatsPage() {
         </div>
 
         {errorMessage ? (
-          <p className="mb-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <p className="mb-5 border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger-text)]">
             {errorMessage}
           </p>
         ) : null}

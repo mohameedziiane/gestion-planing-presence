@@ -18,6 +18,9 @@ const {
   authorizeRoleAccess,
   authorizeRoles,
 } = require("../middleware/role.middleware");
+const {
+  requireAllowedNetworkForPointage,
+} = require("../middleware/pointageNetwork.middleware");
 
 const router = express.Router();
 const allowPresenceRead = authorizeRoleAccess("admin", "directeur", "employe");
@@ -31,7 +34,12 @@ router.get(
   authorizeRoles("admin", "directeur", "employe"),
   getPresenceByEmploye
 );
-router.post("/pointer", authorizeEmployeeOnly, pointerPresence);
+router.post(
+  "/pointer",
+  authorizeEmployeeOnly,
+  requireAllowedNetworkForPointage,
+  pointerPresence
+);
 router.post("/sync-absences", authorizeRoles("admin"), syncAbsences);
 router.get("/me/absences", authorizeEmployeeOnly, getMyAbsences);
 router.get("/:id", allowPresenceRead, getPresenceById);

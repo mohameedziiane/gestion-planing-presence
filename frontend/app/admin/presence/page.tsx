@@ -41,9 +41,9 @@ type SyncSummary = {
   totalPlanningEmployees: number;
 };
 
-const STATUS_PRESENT = "Pr\u00e9sent";
+const STATUS_PRESENT = "Présent";
 const STATUS_ABSENT = "Absent";
-const EMPTY_STATUS = "Non enregistr\u00e9";
+const EMPTY_STATUS = "Non enregistré";
 
 function formatDateValue(date: Date) {
   const year = date.getFullYear();
@@ -102,7 +102,7 @@ function getEmployeeName(row: ApiRow | null | undefined) {
   return (
     getString(row, ["full_name", "employe_nom_complet"]) ||
     name ||
-    "Employ\u00e9 non d\u00e9fini"
+    "Employé non défini"
   );
 }
 
@@ -202,12 +202,12 @@ function buildInitialEdits(rows: PresenceRow[]) {
 function StatusBadge({ status }: { status: string }) {
   const classes =
     status === STATUS_PRESENT
-      ? "border-emerald-300/25 bg-emerald-400/10 text-emerald-100"
+      ? "border-[var(--color-badge-success-border)] bg-[var(--color-badge-success-bg)] text-[var(--color-badge-success-text)]"
       : status === STATUS_ABSENT
-        ? "border-red-300/25 bg-red-400/10 text-red-100"
+        ? "border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] text-[var(--color-danger-text)]"
         : status === "Repos"
-          ? "border-[rgba(172,189,197,0.15)] bg-[#334149] text-[#acbdc5]"
-          : "border-yellow-300/25 bg-yellow-400/10 text-yellow-100";
+          ? "border-[var(--color-badge-border)] bg-[var(--color-badge-bg)] text-[var(--color-badge-text)]"
+          : "border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]";
 
   return (
     <span className={`inline-flex w-fit border px-2.5 py-1 text-xs font-semibold ${classes}`}>
@@ -299,7 +299,7 @@ export default function AdminPresencePage() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Impossible de charger la pr\u00e9sence."
+          : "Impossible de charger la présence."
       );
     } finally {
       setIsLoading(false);
@@ -357,13 +357,13 @@ export default function AdminPresencePage() {
           adresse_ip: getString(row.presence, ["adresse_ip"]) || null,
         }),
       });
-      setSuccessMessage("Pr\u00e9sence mise \u00e0 jour.");
+      setSuccessMessage("Présence mise à jour.");
       await loadPresence();
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Impossible de mettre \u00e0 jour la pr\u00e9sence."
+          : "Impossible de mettre à jour la présence."
       );
     } finally {
       setActiveRowKey("");
@@ -392,15 +392,15 @@ export default function AdminPresencePage() {
       });
       setSuccessMessage(
         statut === STATUS_PRESENT
-          ? "Employ\u00e9 marqu\u00e9 pr\u00e9sent."
-          : "Employ\u00e9 marqu\u00e9 absent."
+          ? "Employé marqué présent."
+          : "Employé marqué absent."
       );
       await loadPresence();
     } catch (error) {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Impossible de cr\u00e9er la pr\u00e9sence."
+          : "Impossible de créer la présence."
       );
     } finally {
       setActiveRowKey("");
@@ -419,9 +419,9 @@ export default function AdminPresencePage() {
       });
 
       setSuccessMessage(
-        `${result.insertedCount} absence(s) synchronis\u00e9e(s). ` +
-          `${result.skippedAlreadyHasPresence} d\u00e9j\u00e0 enregistr\u00e9e(s), ` +
-          `${result.skippedRepos} repos, ${result.totalPlanningEmployees} employ\u00e9(s) planifi\u00e9(s).`
+        `${result.insertedCount} absence(s) synchronisée(s). ` +
+          `${result.skippedAlreadyHasPresence} déjà enregistrée(s), ` +
+          `${result.skippedRepos} repos, ${result.totalPlanningEmployees} employé(s) planifié(s).`
       );
       await loadPresence();
     } catch (error) {
@@ -437,36 +437,39 @@ export default function AdminPresencePage() {
 
   if (!isAllowed) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#4c595f] px-6 text-[#e1e3e4]">
-        <p className="text-sm font-semibold text-[#acbdc5]">Chargement...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] px-6 text-[var(--color-text)]">
+        <p className="text-sm font-semibold text-[var(--color-text-muted)]">Chargement...</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
+    <main className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
       <AdminNavbar onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
-            Correction des pr\u00e9sences
+          <h1 className="text-2xl font-semibold text-[var(--color-text)] sm:text-3xl">
+            Correction des présences
           </h1>
-          <p className="mt-2 text-sm text-[#acbdc5]">
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
             Synchroniser les absences et corriger les pointages manuellement.
           </p>
         </div>
 
-        <section className="mb-6 border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 sm:p-5">
+        <section className="mb-6 border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5">
           <div className="grid gap-4 lg:grid-cols-[220px_minmax(0,1fr)] lg:items-end">
-            <label className="flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+            <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
               Date
               <input
                 type="date"
                 value={selectedDate}
                 onChange={(event) => setSelectedDate(event.target.value)}
-                className="h-10 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-sm font-semibold text-[#e1e3e4] outline-none transition focus:border-[#1AB6FF]"
+                className="h-10 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 text-sm font-semibold text-[var(--color-text)] outline-none transition focus:border-[var(--color-accent)]"
               />
+              <span className="text-xs font-normal text-[var(--color-text-muted)]">
+                Les données se chargent automatiquement après le choix de la date.
+              </span>
             </label>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
@@ -474,15 +477,15 @@ export default function AdminPresencePage() {
                 type="button"
                 onClick={loadPresence}
                 disabled={isLoading}
-                className="h-10 border border-[rgba(172,189,197,0.18)] px-4 text-sm font-semibold text-[#e1e3e4] transition hover:border-[#1AB6FF] disabled:cursor-not-allowed disabled:opacity-70"
+                className="h-10 border border-[var(--color-border)] px-4 text-sm font-semibold text-[var(--color-text)] transition hover:border-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-70"
               >
-                {isLoading ? "Chargement..." : "Charger pr\u00e9sence"}
+                {isLoading ? "Chargement..." : "Actualiser"}
               </button>
               <button
                 type="button"
                 onClick={syncAbsences}
                 disabled={isSyncing || isLoading}
-                className="h-10 bg-[#1AB6FF] px-4 text-sm font-bold text-white transition hover:bg-[#169CDC] disabled:cursor-not-allowed disabled:opacity-70"
+                className="h-10 bg-[var(--color-accent)] px-4 text-sm font-bold text-white transition hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isSyncing ? "Synchronisation..." : "Synchroniser les absences"}
               </button>
@@ -491,81 +494,81 @@ export default function AdminPresencePage() {
         </section>
 
         {errorMessage ? (
-          <p className="mb-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <p className="mb-5 border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger-text)]">
             {errorMessage}
           </p>
         ) : null}
 
         {successMessage ? (
-          <p className="mb-5 border border-emerald-300/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          <p className="mb-5 border border-[var(--color-success-border)] bg-[var(--color-success-bg)] px-4 py-3 text-sm text-[var(--color-success-text)]">
             {successMessage}
           </p>
         ) : null}
 
         <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
-              Pr\u00e9sents
+          <article className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+              Présents
             </p>
-            <p className="mt-2 text-xl font-semibold text-[#e1e3e4]">
+            <p className="mt-2 text-xl font-semibold text-[var(--color-text)]">
               {summary.present}
             </p>
           </article>
-          <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+          <article className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
               Absents
             </p>
-            <p className="mt-2 text-xl font-semibold text-[#e1e3e4]">
+            <p className="mt-2 text-xl font-semibold text-[var(--color-text)]">
               {summary.absent}
             </p>
           </article>
-          <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
-              Non enregistr\u00e9s
+          <article className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+              Non enregistrés
             </p>
-            <p className="mt-2 text-xl font-semibold text-[#e1e3e4]">
+            <p className="mt-2 text-xl font-semibold text-[var(--color-text)]">
               {summary.unregistered}
             </p>
           </article>
-          <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+          <article className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
               Repos
             </p>
-            <p className="mt-2 text-xl font-semibold text-[#e1e3e4]">
+            <p className="mt-2 text-xl font-semibold text-[var(--color-text)]">
               {summary.repos}
             </p>
           </article>
         </div>
 
         {isLoading ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
-            Chargement des pr\u00e9sences...
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
+            Chargement des présences...
           </p>
         ) : !hasRows ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
-            Aucun planning, repos ou pointage trouv\u00e9 pour cette date.
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
+            Aucun planning, repos ou pointage trouvé pour cette date.
           </p>
         ) : (
-          <section className="overflow-x-auto border border-[rgba(172,189,197,0.15)] bg-[#38474e]">
+          <section className="overflow-x-auto border border-[var(--color-border)] bg-[var(--color-surface)]">
             <table className="w-full min-w-[1080px] border-collapse text-sm">
-              <thead className="bg-[#334149] text-left">
+              <thead className="bg-[var(--color-surface-muted)] text-left">
                 <tr>
-                  <th className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#acbdc5]">
-                    Employ\u00e9
+                  <th className="border border-[var(--color-border)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+                    Employé
                   </th>
-                  <th className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#acbdc5]">
+                  <th className="border border-[var(--color-border)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
                     Planning
                   </th>
-                  <th className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#acbdc5]">
+                  <th className="border border-[var(--color-border)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
                     Statut
                   </th>
-                  <th className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#acbdc5]">
-                    Heure arriv\u00e9e
+                  <th className="border border-[var(--color-border)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
+                    Heure arrivée
                   </th>
-                  <th className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#acbdc5]">
+                  <th className="border border-[var(--color-border)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
                     Adresse IP
                   </th>
-                  <th className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#acbdc5]">
+                  <th className="border border-[var(--color-border)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]">
                     Actions
                   </th>
                 </tr>
@@ -583,21 +586,21 @@ export default function AdminPresencePage() {
 
                   return (
                     <tr key={row.key} className="align-top">
-                      <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3">
-                        <p className="font-semibold text-[#e1e3e4]">{row.name}</p>
-                        <p className="mt-1 text-xs text-[#acbdc5]">{row.group}</p>
+                      <td className="border border-[var(--color-border)] px-4 py-3">
+                        <p className="font-semibold text-[var(--color-text)]">{row.name}</p>
+                        <p className="mt-1 text-xs text-[var(--color-text-muted)]">{row.group}</p>
                       </td>
-                      <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3">
+                      <td className="border border-[var(--color-border)] px-4 py-3">
                         {row.repos ? (
-                          <p className="font-semibold text-[#acbdc5]">Repos</p>
+                          <p className="font-semibold text-[var(--color-text-muted)]">Repos</p>
                         ) : row.planning.length > 0 ? (
                           <div className="space-y-2">
                             {row.planning.map((planningRow, index) => (
                               <p key={planningRow.id || `${row.key}-${index}`}>
-                                <span className="font-semibold text-[#e1e3e4]">
+                                <span className="font-semibold text-[var(--color-text)]">
                                   {getShiftName(planningRow)}
                                 </span>
-                                <span className="text-[#acbdc5]">
+                                <span className="text-[var(--color-text-muted)]">
                                   {" "}
                                   - {getRoleName(planningRow)}
                                 </span>
@@ -605,13 +608,13 @@ export default function AdminPresencePage() {
                             ))}
                           </div>
                         ) : (
-                          <p className="text-[#acbdc5]">Aucun planning</p>
+                          <p className="text-[var(--color-text-muted)]">Aucun planning</p>
                         )}
                       </td>
-                      <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3">
+                      <td className="border border-[var(--color-border)] px-4 py-3">
                         <StatusBadge status={status} />
                       </td>
-                      <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3">
+                      <td className="border border-[var(--color-border)] px-4 py-3">
                         {row.presence ? (
                           <input
                             type="time"
@@ -622,16 +625,16 @@ export default function AdminPresencePage() {
                                 heure_arrivee: event.target.value,
                               })
                             }
-                            className="h-9 w-32 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2 text-sm font-semibold text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                            className="h-9 w-32 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                           />
                         ) : (
-                          <span className="text-[#acbdc5]">-</span>
+                          <span className="text-[var(--color-text-muted)]">-</span>
                         )}
                       </td>
-                      <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-[#acbdc5]">
+                      <td className="border border-[var(--color-border)] px-4 py-3 text-[var(--color-text-muted)]">
                         {getString(row.presence, ["adresse_ip"]) || "-"}
                       </td>
-                      <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3">
+                      <td className="border border-[var(--color-border)] px-4 py-3">
                         {row.presence ? (
                           <div className="flex flex-wrap gap-2">
                             <select
@@ -641,22 +644,22 @@ export default function AdminPresencePage() {
                                   statut: event.target.value,
                                 })
                               }
-                              className="h-9 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2 text-sm font-semibold text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                              className="h-9 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 text-sm font-semibold text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                             >
-                              <option value={STATUS_PRESENT}>Pr\u00e9sent</option>
+                              <option value={STATUS_PRESENT}>Présent</option>
                               <option value={STATUS_ABSENT}>Absent</option>
                             </select>
                             <button
                               type="button"
                               onClick={() => saveExistingPresence(row)}
                               disabled={isRowBusy}
-                              className="h-9 bg-[#1AB6FF] px-3 text-sm font-bold text-white transition hover:bg-[#169CDC] disabled:cursor-not-allowed disabled:opacity-70"
+                              className="h-9 bg-[var(--color-accent)] px-3 text-sm font-bold text-white transition hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               {isRowBusy ? "..." : "Enregistrer"}
                             </button>
                           </div>
                         ) : row.repos ? (
-                          <span className="text-sm text-[#acbdc5]">
+                          <span className="text-sm text-[var(--color-text-muted)]">
                             Aucune action pendant repos
                           </span>
                         ) : (
@@ -665,15 +668,15 @@ export default function AdminPresencePage() {
                               type="button"
                               onClick={() => createPresence(row, STATUS_PRESENT)}
                               disabled={isRowBusy}
-                              className="h-9 border border-emerald-300/30 px-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-70"
+                              className="h-9 border border-[var(--color-success-border)] bg-[var(--color-success-bg)] px-3 text-sm font-semibold text-[var(--color-success-text)] transition hover:border-[var(--color-badge-success-border)] disabled:cursor-not-allowed disabled:opacity-70"
                             >
-                              Marquer pr\u00e9sent
+                              Marquer présent
                             </button>
                             <button
                               type="button"
                               onClick={() => createPresence(row, STATUS_ABSENT)}
                               disabled={isRowBusy}
-                              className="h-9 border border-red-300/30 px-3 text-sm font-semibold text-red-100 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-70"
+                              className="h-9 border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 text-sm font-semibold text-[var(--color-danger-text)] transition hover:border-[var(--color-danger-text)] disabled:cursor-not-allowed disabled:opacity-70"
                             >
                               Marquer absent
                             </button>

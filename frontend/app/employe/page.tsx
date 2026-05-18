@@ -135,10 +135,10 @@ function StatusBadge({
   tone: "blue" | "green" | "red" | "muted";
 }) {
   const classes = {
-    blue: "border-[#1AB6FF]/25 bg-[#1AB6FF]/10 text-[#bdeaff]",
+    blue: "border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 text-[var(--color-accent)]",
     green: "border-emerald-300/25 bg-emerald-400/10 text-emerald-100",
-    red: "border-red-300/25 bg-red-400/10 text-red-100",
-    muted: "border-[rgba(172,189,197,0.15)] bg-[#334149] text-[#acbdc5]",
+    red: "border-[var(--color-badge-danger-border)] bg-[var(--color-badge-danger-bg)] text-[var(--color-badge-danger-text)]",
+    muted: "border-[var(--color-border)] bg-[var(--color-surface-muted)] text-[var(--color-text-muted)]",
   };
 
   return (
@@ -265,43 +265,43 @@ export default function EmployePage() {
 
   if (!isAuthorized) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#4c595f] px-6 text-[#e1e3e4]">
-        <p className="text-sm font-semibold text-[#acbdc5]">Chargement...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] px-6 text-[var(--color-text)]">
+        <p className="text-sm font-semibold text-[var(--color-text-muted)]">Chargement...</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
+    <main className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
       <EmployeeNavbar user={user} onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_280px] lg:items-end">
           <div>
-            <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
+            <h1 className="text-2xl font-semibold text-[var(--color-text)] sm:text-3xl">
               Pointage
             </h1>
-            <p className="mt-2 text-sm text-[#acbdc5]">
+            <p className="mt-2 text-sm text-[var(--color-text-muted)]">
               Pointage du jour et statut de présence.
             </p>
           </div>
-          <div className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-            <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+          <div className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
               Employé connecté
             </p>
-            <p className="mt-1 text-base font-semibold text-[#e1e3e4]">
+            <p className="mt-1 text-base font-semibold text-[var(--color-text)]">
               {getEmployeeName(user)}
             </p>
           </div>
         </div>
 
-        <section className="border border-l-4 border-[rgba(172,189,197,0.15)] border-l-[#1AB6FF] bg-[#38474e] p-4 sm:p-5">
+        <section className="border border-l-4 border-[var(--color-border)] border-l-[var(--color-accent)] bg-[var(--color-surface)] p-4 sm:p-5">
           <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
             <div>
-              <h2 className="text-xl font-semibold text-[#e1e3e4]">
+              <h2 className="text-xl font-semibold text-[var(--color-text)]">
                 Pointage du jour
               </h2>
-              <p className="mt-1 text-sm text-[#acbdc5]">
+              <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                 {getEmployeeName(user)} - {todayDate}
               </p>
             </div>
@@ -317,48 +317,48 @@ export default function EmployePage() {
           </div>
 
           {isTodayLoading ? (
-            <p className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-4 text-sm text-[#acbdc5]">
+            <p className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-4 text-sm text-[var(--color-text-muted)]">
               Chargement du pointage...
             </p>
           ) : todayError ? (
-            <p className="border border-red-300/30 bg-red-500/10 px-3 py-4 text-sm text-red-100">
+            <p className="border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-4 text-sm text-[var(--color-danger-text)]">
               {todayError}
             </p>
           ) : (
             <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-              <div className="border border-[rgba(172,189,197,0.15)] bg-[#334149] p-4">
+              <div className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
                 {alreadyPointed ? (
                   <>
-                    <p className="text-sm font-semibold text-[#e1e3e4]">
+                    <p className="text-sm font-semibold text-[var(--color-text)]">
                       Présence déjà enregistrée
                     </p>
-                    <p className="mt-2 text-sm text-[#acbdc5]">
+                    <p className="mt-2 text-sm text-[var(--color-text-muted)]">
                       Heure d&apos;arrivée: {getArrivalTime(todayPresenceRow)}
                     </p>
                   </>
                 ) : hasTodayRepos ? (
                   <>
-                    <p className="text-sm font-semibold text-[#e1e3e4]">
+                    <p className="text-sm font-semibold text-[var(--color-text)]">
                       Repos aujourd&apos;hui
                     </p>
-                    <p className="mt-2 text-sm text-[#acbdc5]">
+                    <p className="mt-2 text-sm text-[var(--color-text-muted)]">
                       Type: {getReposType(todayReposRow)}
                     </p>
                   </>
                 ) : hasTodayPlanning ? (
                   <div className="space-y-3">
-                    <p className="text-sm font-semibold text-[#e1e3e4]">
+                    <p className="text-sm font-semibold text-[var(--color-text)]">
                       Travail aujourd&apos;hui
                     </p>
                     {todayState.planning.map((row, index) => (
                       <div
                         key={row.id || `today-${index}`}
-                        className="border-l-2 border-[#1AB6FF] bg-[#38474e] px-3 py-3"
+                        className="border-l-2 border-[var(--color-accent)] bg-[var(--color-surface)] px-3 py-3"
                       >
-                        <p className="text-sm font-semibold text-[#e1e3e4]">
+                        <p className="text-sm font-semibold text-[var(--color-text)]">
                           {getShiftName(row)}
                         </p>
-                        <p className="mt-1 text-sm text-[#acbdc5]">
+                        <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                           {getRoleName(row)}
                         </p>
                       </div>
@@ -366,23 +366,20 @@ export default function EmployePage() {
                   </div>
                 ) : (
                   <>
-                    <p className="text-sm font-semibold text-[#e1e3e4]">
+                    <p className="text-sm font-semibold text-[var(--color-text)]">
                       Aucun planning aujourd&apos;hui
                     </p>
-                    <p className="mt-2 text-sm text-[#acbdc5]">
+                    <p className="mt-2 text-sm text-[var(--color-text-muted)]">
                       Le pointage est indisponible sans planning du jour.
                     </p>
                   </>
                 )}
               </div>
 
-              <aside className="flex flex-col justify-between gap-4 border border-[rgba(172,189,197,0.15)] bg-[#334149] p-4">
+              <aside className="flex flex-col justify-between gap-4 border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-4">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
                     Action
-                  </p>
-                  <p className="mt-2 text-sm text-[#acbdc5]">
-                    Le pointage est validé par le serveur et limité au réseau interne.
                   </p>
                 </div>
 
@@ -391,12 +388,12 @@ export default function EmployePage() {
                     type="button"
                     onClick={handlePointage}
                     disabled={isPointing}
-                    className="h-11 bg-[#1AB6FF] px-5 text-sm font-bold text-white transition hover:bg-[#169CDC] focus:outline-none focus:ring-2 focus:ring-[#1AB6FF]/35 disabled:cursor-not-allowed disabled:bg-[#169CDC] disabled:opacity-70"
+                    className="h-11 bg-[var(--color-accent)] px-5 text-sm font-bold text-white transition hover:bg-[var(--color-accent-hover)] focus:outline-none focus:ring-2 focus:ring-[var(--color-accent)]/35 disabled:cursor-not-allowed disabled:bg-[var(--color-accent-hover)] disabled:opacity-70"
                   >
                     {isPointing ? "Pointage..." : "Pointer ma présence"}
                   </button>
                 ) : (
-                  <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-3 py-3 text-sm text-[#acbdc5]">
+                  <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-3 text-sm text-[var(--color-text-muted)]">
                     {alreadyPointed
                       ? "Vous avez déjà pointé aujourd'hui."
                       : hasTodayRepos
@@ -408,7 +405,7 @@ export default function EmployePage() {
                 )}
 
                 {pointageMessage ? (
-                  <p className="border border-[#1AB6FF]/25 bg-[#1AB6FF]/10 px-3 py-3 text-sm font-semibold text-[#bdeaff]">
+                  <p className="border border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 px-3 py-3 text-sm font-semibold text-[var(--color-accent)]">
                     {pointageMessage}
                   </p>
                 ) : null}

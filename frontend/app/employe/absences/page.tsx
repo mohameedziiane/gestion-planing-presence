@@ -59,7 +59,7 @@ async function fetchMyAbsences() {
 
 function StatusBadge({ children }: { children: React.ReactNode }) {
   return (
-    <span className="inline-flex w-fit border border-red-300/25 bg-red-400/10 px-2.5 py-1 text-xs font-semibold text-red-100">
+    <span className="inline-flex w-fit border border-[var(--color-badge-danger-border)] bg-[var(--color-badge-danger-bg)] px-2.5 py-1 text-xs font-semibold text-[var(--color-badge-danger-text)]">
       {children}
     </span>
   );
@@ -67,7 +67,7 @@ function StatusBadge({ children }: { children: React.ReactNode }) {
 
 function LoadingPanel({ label }: { label: string }) {
   return (
-    <section className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm font-semibold text-[#acbdc5]">
+    <section className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm font-semibold text-[var(--color-text-muted)]">
       {label}
     </section>
   );
@@ -153,22 +153,22 @@ export default function EmployeAbsencesPage() {
 
   if (!isAuthorized) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#4c595f] px-6 text-[#e1e3e4]">
-        <p className="text-sm font-semibold text-[#acbdc5]">Chargement...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] px-6 text-[var(--color-text)]">
+        <p className="text-sm font-semibold text-[var(--color-text-muted)]">Chargement...</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
+    <main className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
       <EmployeeNavbar user={user} onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
+          <h1 className="text-2xl font-semibold text-[var(--color-text)] sm:text-3xl">
             Mes absences
           </h1>
-          <p className="mt-2 text-sm text-[#acbdc5]">
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
             Historique personnel des absences enregistrées.
           </p>
         </div>
@@ -176,11 +176,11 @@ export default function EmployeAbsencesPage() {
         {isAbsencesLoading ? (
           <LoadingPanel label="Chargement des absences..." />
         ) : absencesError ? (
-          <p className="border border-red-300/30 bg-red-500/10 px-4 py-5 text-sm text-red-100">
+          <p className="border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-5 text-sm text-[var(--color-danger-text)]">
             {absencesError}
           </p>
         ) : absences.length === 0 ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
             Aucune absence enregistrée.
           </p>
         ) : (
@@ -188,20 +188,20 @@ export default function EmployeAbsencesPage() {
             {absences.map((absence, index) => (
               <article
                 key={absence.id || `absence-${index}`}
-                className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4"
+                className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
               >
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <div>
-                    <h3 className="text-base font-semibold text-[#e1e3e4]">
+                    <h3 className="text-base font-semibold text-[var(--color-text)]">
                       {getString(absence, ["date", "_date"]) || "-"}
                     </h3>
-                    <p className="mt-1 text-sm text-[#acbdc5]">
+                    <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                       Aucun pointage enregistré
                     </p>
                   </div>
                   <StatusBadge>{getPresenceStatus(absence) || "Absent"}</StatusBadge>
                 </div>
-                <p className="text-sm text-[#acbdc5]">
+                <p className="text-sm text-[var(--color-text-muted)]">
                   Heure arrivée: {getArrivalTime(absence) || "-"}
                 </p>
               </article>

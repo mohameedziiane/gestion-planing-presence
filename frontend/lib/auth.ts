@@ -2,6 +2,8 @@ export type StoredUser = {
   id?: number;
   email?: string;
   role?: "admin" | "directeur" | "employe" | string;
+  avatar_url?: string | null;
+  avatarUrl?: string | null;
   employe_id?: number | null;
   employe?: {
     id?: number;
@@ -50,6 +52,28 @@ export function getStoredUser(): StoredUser | null {
   } catch {
     return null;
   }
+}
+
+export function setStoredUser(user: StoredUser | null) {
+  if (!canUseLocalStorage()) {
+    return;
+  }
+
+  try {
+    if (user) {
+      localStorage.setItem("user", JSON.stringify(user));
+    } else {
+      localStorage.removeItem("user");
+    }
+
+    window.dispatchEvent(new Event("auth:user-updated"));
+  } catch {
+    // Ignore storage failures so profile updates do not crash the UI.
+  }
+}
+
+export function getUserAvatarUrl(user: StoredUser | null | undefined) {
+  return user?.avatar_url || user?.avatarUrl || "";
 }
 
 export function clearAuth() {

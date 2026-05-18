@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 
 import AdminNavbar from "@/components/AdminNavbar";
+import { API_BASE_URL, translateUserMessage, translateUserMessages } from "@/lib/api";
 
 type NestedRecord = Record<string, unknown>;
 type EmployeeRow = Record<string, unknown> & {
@@ -326,11 +327,11 @@ function getDuplicateNightOrderEmployee(
 
 function StatCard({ label, value }: { label: string; value: number }) {
   return (
-    <div className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-3">
-      <p className="text-xs font-semibold uppercase text-[#acbdc5]">
+    <div className="rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3">
+      <p className="text-xs font-semibold uppercase text-[var(--color-text-muted)]">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-semibold text-[#e1e3e4]">{value}</p>
+      <p className="mt-1 text-2xl font-semibold text-[var(--color-text)]">{value}</p>
     </div>
   );
 }
@@ -339,13 +340,13 @@ function NightCycleSummary({ employees }: { employees: EmployeeRow[] }) {
   const nightCycleEmployees = getNightCycleEmployees(employees);
 
   return (
-    <section className="mb-5 rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
+    <section className="mb-5 rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-[#e1e3e4]">
+          <h2 className="text-base font-semibold text-[var(--color-text)]">
             Cycle de nuit actuel
           </h2>
-          <p className="mt-1 text-sm text-[#acbdc5]">
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
             Le planning de nuit suit cet ordre par blocs de 7 jours. Chaque
             ordre doit être unique.
           </p>
@@ -357,9 +358,9 @@ function NightCycleSummary({ employees }: { employees: EmployeeRow[] }) {
           {nightCycleEmployees.map((employee) => (
             <span
               key={employee.id || `${getEmployeeName(employee)}-${getOrdreNuit(employee)}`}
-              className="rounded-[3px] border border-[#1AB6FF]/35 bg-[#334149] px-3 py-2 text-sm font-semibold text-[#e1e3e4]"
+              className="rounded-[3px] border border-[var(--color-accent)]/35 bg-[var(--color-surface-muted)] px-3 py-2 text-sm font-semibold text-[var(--color-text)]"
             >
-              <span className="mr-2 text-[#1AB6FF]">
+              <span className="mr-2 text-[var(--color-accent)]">
                 {getOrdreNuit(employee)}.
               </span>
               {getEmployeeName(employee) || "Employé non défini"}
@@ -367,7 +368,7 @@ function NightCycleSummary({ employees }: { employees: EmployeeRow[] }) {
           ))}
         </div>
       ) : (
-        <p className="mt-4 rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-sm text-[#acbdc5]">
+        <p className="mt-4 rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-sm text-[var(--color-text-muted)]">
           Aucun cycle de nuit configuré.
         </p>
       )}
@@ -393,53 +394,50 @@ function EmployeeCard({
   const ordreNuit = getOrdreNuit(employee);
 
   return (
-    <article className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
+    <article className="rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <h2 className="truncate text-base font-semibold text-[#e1e3e4]">
+          <h2 className="truncate text-base font-semibold text-[var(--color-text)]">
             {getEmployeeName(employee) || "Employé non défini"}
           </h2>
-          <p className="mt-1 truncate text-sm text-[#acbdc5]">
+          <p className="mt-1 truncate text-sm text-[var(--color-text-muted)]">
             {getEmail(employee)}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {!active ? (
-            <span className="w-fit rounded-[3px] border border-[rgba(172,189,197,0.25)] bg-[#334149] px-2 py-1 text-xs font-semibold text-[#acbdc5]">
+            <span className="w-fit rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 py-1 text-xs font-semibold text-[var(--color-text-muted)]">
               Inactif
             </span>
           ) : null}
-          <span className="w-fit rounded-[3px] border border-[rgba(172,189,197,0.15)] px-2 py-1 text-xs font-semibold text-[#acbdc5]">
+          <span className="w-fit rounded-[3px] border border-[var(--color-border)] px-2 py-1 text-xs font-semibold text-[var(--color-text-muted)]">
             {getGroupName(employee)}
           </span>
         </div>
       </div>
 
-      <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-[#e1e3e4]">
-        <span className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2.5 py-1.5">
+      <div className="mt-4 flex flex-wrap gap-2 text-xs font-semibold text-[var(--color-text)]">
+        <span className="rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-1.5">
           Sexe: {getSexe(employee)}
         </span>
-        <span className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2.5 py-1.5">
+        <span className="rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-1.5">
           {getFixedControlLabel(employee)}
         </span>
-        <span className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2.5 py-1.5">
+        <span className="rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-1.5">
           Nuit: {yesNo(nightAuthorized)}
         </span>
         {ordreNuit ? (
-          <span className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2.5 py-1.5">
+          <span className="rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-1.5">
             Ordre nuit: {ordreNuit}
           </span>
         ) : null}
-        <span className="rounded-[3px] border border-[rgba(172,189,197,0.15)] bg-[#334149] px-2.5 py-1.5">
-          Repos base: {getReposBaseTarget(employee)}
-        </span>
       </div>
 
-      <div className="mt-4 flex flex-col gap-2 border-t border-[rgba(172,189,197,0.12)] pt-3 sm:flex-row sm:justify-end">
+      <div className="mt-4 flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 sm:flex-row sm:justify-end">
         <button
           type="button"
           onClick={() => onEdit(employee)}
-          className="rounded-[3px] border border-[#1AB6FF]/60 px-3 py-1.5 text-sm font-semibold text-[#e1e3e4] transition hover:bg-[#1AB6FF] hover:text-[#102029]"
+          className="rounded-[3px] border border-[var(--color-action-primary-border)] bg-[var(--color-action-primary-bg)] px-3 py-1.5 text-sm font-semibold text-[var(--color-action-primary-text)] transition hover:bg-[var(--color-accent)] hover:text-white"
         >
           Modifier
         </button>
@@ -447,7 +445,7 @@ function EmployeeCard({
           <button
             type="button"
             onClick={() => onDeactivate(employee)}
-            className="rounded-[3px] border border-red-400/35 bg-red-950/20 px-3 py-1.5 text-sm font-semibold text-red-200 transition hover:border-red-300/60 hover:bg-red-900/35 hover:text-red-100"
+            className="rounded-[3px] border border-[var(--color-action-danger-border)] bg-[var(--color-action-danger-bg)] px-3 py-1.5 text-sm font-semibold text-[var(--color-action-danger-text)] transition hover:bg-red-600 hover:text-white"
           >
             Désactiver
           </button>
@@ -526,7 +524,7 @@ export default function AdminEmployesPage() {
     setError("");
 
     try {
-      const response = await fetch("http://localhost:5000/api/employes", {
+      const response = await fetch(`${API_BASE_URL}/api/employes`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -534,7 +532,9 @@ export default function AdminEmployesPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data?.message || "Impossible de charger les employés.");
+        setError(
+          translateUserMessage(data?.message || "Impossible de charger les employés.")
+        );
         setEmployees([]);
         return;
       }
@@ -672,7 +672,7 @@ export default function AdminEmployesPage() {
 
     try {
       const response = await fetch(
-        `http://localhost:5000/api/employes/${employeeId}`,
+        `${API_BASE_URL}/api/employes/${employeeId}`,
         {
           method: "PUT",
           headers: {
@@ -686,11 +686,11 @@ export default function AdminEmployesPage() {
 
       if (!response.ok) {
         setEditError(
-          data?.message || "Impossible de mettre à jour cet employé."
+          translateUserMessage(data?.message || "Impossible de mettre à jour cet employé.")
         );
         setEditErrors(
           Array.isArray(data?.errors)
-            ? data.errors.map((item: unknown) => String(item))
+            ? translateUserMessages(data.errors)
             : []
         );
         return;
@@ -758,7 +758,7 @@ export default function AdminEmployesPage() {
     setCreateErrors([]);
 
     try {
-      const response = await fetch("http://localhost:5000/api/employes", {
+      const response = await fetch(`${API_BASE_URL}/api/employes`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -769,10 +769,12 @@ export default function AdminEmployesPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        setCreateError(data?.message || "Impossible de créer cet employé.");
+        setCreateError(
+          translateUserMessage(data?.message || "Impossible de créer cet employé.")
+        );
         setCreateErrors(
           Array.isArray(data?.errors)
-            ? data.errors.map((item: unknown) => String(item))
+            ? translateUserMessages(data.errors)
             : []
         );
         return;
@@ -814,7 +816,7 @@ export default function AdminEmployesPage() {
 
     try {
       const response = await fetch(
-        `http://localhost:5000/api/employes/${employeeId}`,
+        `${API_BASE_URL}/api/employes/${employeeId}`,
         {
           method: "DELETE",
           headers: {
@@ -826,11 +828,11 @@ export default function AdminEmployesPage() {
 
       if (!response.ok) {
         setDeactivateError(
-          data?.message || "Impossible de désactiver cet employé."
+          translateUserMessage(data?.message || "Impossible de désactiver cet employé.")
         );
         setDeactivateErrors(
           Array.isArray(data?.errors)
-            ? data.errors.map((item: unknown) => String(item))
+            ? translateUserMessages(data.errors)
             : []
         );
         return;
@@ -862,7 +864,7 @@ export default function AdminEmployesPage() {
       setError("");
 
       try {
-        const response = await fetch("http://localhost:5000/api/employes", {
+        const response = await fetch(`${API_BASE_URL}/api/employes`, {
           headers: {
             Authorization: `Bearer ${token}`,
           },
@@ -874,7 +876,9 @@ export default function AdminEmployesPage() {
         }
 
         if (!response.ok) {
-          setError(data?.message || "Impossible de charger les employés.");
+          setError(
+            translateUserMessage(data?.message || "Impossible de charger les employés.")
+          );
           setEmployees([]);
           return;
         }
@@ -900,23 +904,23 @@ export default function AdminEmployesPage() {
   }, [router]);
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
+    <main className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
       <AdminNavbar onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-          <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
+          <h1 className="text-2xl font-semibold text-[var(--color-text)] sm:text-3xl">
             Gestion des employés
           </h1>
-          <p className="mt-2 text-sm text-[#acbdc5]">
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
             Liste des employés de la Gare Routière de Taza
           </p>
           </div>
           <button
             type="button"
             onClick={openCreateModal}
-            className="w-full rounded-[3px] border border-[#1AB6FF] bg-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:border-[#169CDC] hover:bg-[#169CDC] sm:w-auto"
+            className="w-full rounded-[3px] border border-[var(--color-accent)] bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:border-[var(--color-accent-hover)] hover:bg-[var(--color-accent-hover)] sm:w-auto"
           >
             Ajouter employé
           </button>
@@ -939,21 +943,21 @@ export default function AdminEmployesPage() {
         ) : null}
 
         {isLoading ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
             Chargement des employés...
           </p>
         ) : error ? (
-          <p className="border border-red-300/30 bg-red-500/10 px-4 py-5 text-sm text-red-100">
+          <p className="border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-5 text-sm text-[var(--color-danger-text)]">
             {error}
           </p>
         ) : employees.length === 0 ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
             Aucun employé trouvé.
           </p>
         ) : (
           <>
             {successMessage ? (
-              <p className="mb-4 border border-[#1AB6FF]/40 bg-[#1AB6FF]/10 px-4 py-3 text-sm font-semibold text-[#e1e3e4]">
+              <p className="mb-4 border border-[var(--color-accent)]/40 bg-[var(--color-accent)]/10 px-4 py-3 text-sm font-semibold text-[var(--color-text)]">
                 {successMessage}
               </p>
             ) : null}
@@ -974,27 +978,27 @@ export default function AdminEmployesPage() {
 
       {isCreateModalOpen ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 py-4 sm:items-center">
-          <div className="max-h-[92vh] w-full max-w-[620px] overflow-y-auto border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 shadow-2xl sm:p-6">
-            <div className="flex items-start justify-between gap-4 border-b border-[rgba(172,189,197,0.15)] pb-4">
+          <div className="max-h-[92vh] w-full max-w-[620px] overflow-y-auto border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] pb-4">
               <div>
-                <h2 className="text-xl font-semibold text-[#e1e3e4]">
+                <h2 className="text-xl font-semibold text-[var(--color-text)]">
                   Ajouter employé
                 </h2>
-                <p className="mt-1 text-sm text-[#acbdc5]">
+                <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                   Nouvel employé de la Gare Routière de Taza
                 </p>
               </div>
               <button
                 type="button"
                 onClick={closeCreateModal}
-                className="border border-[rgba(172,189,197,0.18)] px-3 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+                className="border border-[var(--color-border)] px-3 py-2 text-sm font-semibold text-[var(--color-text-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text)]"
               >
                 Fermer
               </button>
             </div>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Prénom
                 <input
                   type="text"
@@ -1002,11 +1006,11 @@ export default function AdminEmployesPage() {
                   onChange={(event) =>
                     updateCreateForm({ prenom: event.target.value })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 />
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Nom
                 <input
                   type="text"
@@ -1014,11 +1018,11 @@ export default function AdminEmployesPage() {
                   onChange={(event) =>
                     updateCreateForm({ nom: event.target.value })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 />
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Email
                 <input
                   type="email"
@@ -1026,11 +1030,11 @@ export default function AdminEmployesPage() {
                   onChange={(event) =>
                     updateCreateForm({ email: event.target.value })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 />
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Mot de passe
                 <input
                   type="text"
@@ -1038,11 +1042,11 @@ export default function AdminEmployesPage() {
                   onChange={(event) =>
                     updateCreateForm({ mot_de_passe: event.target.value })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 />
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Sexe
                 <select
                   value={createForm.sexe}
@@ -1051,28 +1055,28 @@ export default function AdminEmployesPage() {
                       sexe: event.target.value as "Homme" | "Femme",
                     })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 >
                   <option value="Homme">Homme</option>
                   <option value="Femme">Femme</option>
                 </select>
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Groupe
                 <select
                   value={createForm.groupe_id}
                   onChange={(event) =>
                     updateCreateForm({ groupe_id: Number(event.target.value) })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 >
                   <option value={1}>Groupe A</option>
                   <option value={2}>Groupe B</option>
                 </select>
               </label>
 
-              <label className="flex items-center justify-between gap-3 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3 text-sm font-semibold text-[#e1e3e4]">
+              <label className="flex items-center justify-between gap-3 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-sm font-semibold text-[var(--color-text)]">
                 Actif
                 <input
                   type="checkbox"
@@ -1080,11 +1084,11 @@ export default function AdminEmployesPage() {
                   onChange={(event) =>
                     updateCreateForm({ actif: event.target.checked })
                   }
-                  className="h-5 w-5 accent-[#1AB6FF]"
+                  className="h-5 w-5 accent-[var(--color-accent)]"
                 />
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Repos base
                 <select
                   value={createForm.repos_base_target}
@@ -1093,14 +1097,14 @@ export default function AdminEmployesPage() {
                       repos_base_target: event.target.value as "1j" | "2j",
                     })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 >
                   <option value="1j">1j</option>
                   <option value="2j">2j</option>
                 </select>
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Contrôle fixe
                 <select
                   value={createForm.controle}
@@ -1112,7 +1116,7 @@ export default function AdminEmployesPage() {
                         | "Soir",
                     })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 >
                   <option value="Aucun">Aucun</option>
                   <option value="Matin">Matin</option>
@@ -1120,7 +1124,7 @@ export default function AdminEmployesPage() {
                 </select>
               </label>
 
-              <label className="flex items-center justify-between gap-3 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3 text-sm font-semibold text-[#e1e3e4]">
+              <label className="flex items-center justify-between gap-3 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-sm font-semibold text-[var(--color-text)]">
                 Peut travailler la nuit
                 <input
                   type="checkbox"
@@ -1134,11 +1138,11 @@ export default function AdminEmployesPage() {
                       travail_nuit_autorise: event.target.checked,
                     })
                   }
-                  className="h-5 w-5 accent-[#1AB6FF] disabled:opacity-40"
+                  className="h-5 w-5 accent-[var(--color-accent)] disabled:opacity-40"
                 />
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4] sm:col-span-2">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)] sm:col-span-2">
                 Ordre nuit
                 <input
                   type="number"
@@ -1149,9 +1153,9 @@ export default function AdminEmployesPage() {
                   onChange={(event) =>
                     updateCreateForm({ ordre_nuit: event.target.value })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-50"
                 />
-                <span className="text-xs font-medium text-[#acbdc5]">
+                <span className="text-xs font-medium text-[var(--color-text-muted)]">
                   Ordre utilisé dans le cycle de nuit. Il doit être unique.
                 </span>
                 {createDuplicateNightOrder ? (
@@ -1166,7 +1170,7 @@ export default function AdminEmployesPage() {
             </div>
 
             {createError ? (
-              <div className="mt-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              <div className="mt-5 border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger-text)]">
                 <p className="font-semibold">{createError}</p>
                 {createErrors.length > 0 ? (
                   <ul className="mt-2 list-disc space-y-1 pl-5">
@@ -1182,7 +1186,7 @@ export default function AdminEmployesPage() {
               <button
                 type="button"
                 onClick={closeCreateModal}
-                className="border border-[rgba(172,189,197,0.18)] px-4 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+                className="border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text)]"
               >
                 Annuler
               </button>
@@ -1190,7 +1194,7 @@ export default function AdminEmployesPage() {
                 type="button"
                 onClick={handleCreateEmployee}
                 disabled={isCreating}
-                className="border border-[#1AB6FF] bg-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:bg-transparent hover:text-[#e1e3e4] disabled:cursor-wait disabled:opacity-60"
+                className="border border-[var(--color-accent)] bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:bg-transparent hover:text-[var(--color-text)] disabled:cursor-wait disabled:opacity-60"
               >
                 {isCreating ? "Création..." : "Créer"}
               </button>
@@ -1201,13 +1205,13 @@ export default function AdminEmployesPage() {
 
       {deactivatingEmployee ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 py-4 sm:items-center">
-          <div className="max-h-[92vh] w-full max-w-[560px] overflow-y-auto border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 shadow-2xl sm:p-6">
-            <div className="flex items-start justify-between gap-4 border-b border-[rgba(172,189,197,0.15)] pb-4">
+          <div className="max-h-[92vh] w-full max-w-[560px] overflow-y-auto border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] pb-4">
               <div>
-                <h2 className="text-xl font-semibold text-[#e1e3e4]">
+                <h2 className="text-xl font-semibold text-[var(--color-text)]">
                   Désactiver employé
                 </h2>
-                <p className="mt-1 text-sm font-semibold text-[#e1e3e4]">
+                <p className="mt-1 text-sm font-semibold text-[var(--color-text)]">
                   {getEmployeeName(deactivatingEmployee) ||
                     "Employé non défini"}
                 </p>
@@ -1215,19 +1219,19 @@ export default function AdminEmployesPage() {
               <button
                 type="button"
                 onClick={closeDeactivateModal}
-                className="border border-[rgba(172,189,197,0.18)] px-3 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+                className="border border-[var(--color-border)] px-3 py-2 text-sm font-semibold text-[var(--color-text-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text)]"
               >
                 Fermer
               </button>
             </div>
 
-            <p className="mt-5 text-sm leading-6 text-[#acbdc5]">
+            <p className="mt-5 text-sm leading-6 text-[var(--color-text-muted)]">
               Cet employé ne sera plus inclus dans les prochains plannings,
               mais son historique sera conservé.
             </p>
 
             {deactivateError ? (
-              <div className="mt-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              <div className="mt-5 border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger-text)]">
                 <p className="font-semibold">{deactivateError}</p>
                 {deactivateErrors.length > 0 ? (
                   <ul className="mt-2 list-disc space-y-1 pl-5">
@@ -1243,7 +1247,7 @@ export default function AdminEmployesPage() {
               <button
                 type="button"
                 onClick={closeDeactivateModal}
-                className="border border-[rgba(172,189,197,0.18)] px-4 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+                className="border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text)]"
               >
                 Annuler
               </button>
@@ -1264,27 +1268,27 @@ export default function AdminEmployesPage() {
 
       {editingEmployee && editForm ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/45 px-3 py-4 sm:items-center">
-          <div className="max-h-[92vh] w-full max-w-[620px] overflow-y-auto border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 shadow-2xl sm:p-6">
-            <div className="flex items-start justify-between gap-4 border-b border-[rgba(172,189,197,0.15)] pb-4">
+          <div className="max-h-[92vh] w-full max-w-[620px] overflow-y-auto border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-2xl sm:p-6">
+            <div className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] pb-4">
               <div>
-                <h2 className="text-xl font-semibold text-[#e1e3e4]">
+                <h2 className="text-xl font-semibold text-[var(--color-text)]">
                   Modifier employé
                 </h2>
-                <p className="mt-1 text-sm text-[#acbdc5]">
+                <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                   {getEmployeeName(editingEmployee) || "Employé non défini"}
                 </p>
               </div>
               <button
                 type="button"
                 onClick={closeEditModal}
-                className="border border-[rgba(172,189,197,0.18)] px-3 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+                className="border border-[var(--color-border)] px-3 py-2 text-sm font-semibold text-[var(--color-text-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text)]"
               >
                 Fermer
               </button>
             </div>
 
             <div className="mt-5 grid gap-4 sm:grid-cols-2">
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Sexe
                 <select
                   value={editForm.sexe}
@@ -1293,28 +1297,28 @@ export default function AdminEmployesPage() {
                       sexe: event.target.value as "Homme" | "Femme",
                     })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 >
                   <option value="Homme">Homme</option>
                   <option value="Femme">Femme</option>
                 </select>
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Groupe
                 <select
                   value={editForm.groupe_id}
                   onChange={(event) =>
                     updateEditForm({ groupe_id: Number(event.target.value) })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 >
                   <option value={1}>Groupe A</option>
                   <option value={2}>Groupe B</option>
                 </select>
               </label>
 
-              <label className="flex items-center justify-between gap-3 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3 text-sm font-semibold text-[#e1e3e4]">
+              <label className="flex items-center justify-between gap-3 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-sm font-semibold text-[var(--color-text)]">
                 Actif
                 <input
                   type="checkbox"
@@ -1322,11 +1326,11 @@ export default function AdminEmployesPage() {
                   onChange={(event) =>
                     updateEditForm({ actif: event.target.checked })
                   }
-                  className="h-5 w-5 accent-[#1AB6FF]"
+                  className="h-5 w-5 accent-[var(--color-accent)]"
                 />
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Repos base
                 <select
                   value={editForm.repos_base_target}
@@ -1335,14 +1339,14 @@ export default function AdminEmployesPage() {
                       repos_base_target: event.target.value as "1j" | "2j",
                     })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 >
                   <option value="1j">1j</option>
                   <option value="2j">2j</option>
                 </select>
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4]">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)]">
                 Contrôle fixe
                 <select
                   value={editForm.controle}
@@ -1354,7 +1358,7 @@ export default function AdminEmployesPage() {
                         | "Soir",
                     })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 >
                   <option value="Aucun">Aucun</option>
                   <option value="Matin">Matin</option>
@@ -1362,7 +1366,7 @@ export default function AdminEmployesPage() {
                 </select>
               </label>
 
-              <label className="flex items-center justify-between gap-3 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-3 text-sm font-semibold text-[#e1e3e4]">
+              <label className="flex items-center justify-between gap-3 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-sm font-semibold text-[var(--color-text)]">
                 Peut travailler la nuit
                 <input
                   type="checkbox"
@@ -1375,11 +1379,11 @@ export default function AdminEmployesPage() {
                       travail_nuit_autorise: event.target.checked,
                     })
                   }
-                  className="h-5 w-5 accent-[#1AB6FF] disabled:opacity-40"
+                  className="h-5 w-5 accent-[var(--color-accent)] disabled:opacity-40"
                 />
               </label>
 
-              <label className="grid gap-2 text-sm font-semibold text-[#e1e3e4] sm:col-span-2">
+              <label className="grid gap-2 text-sm font-semibold text-[var(--color-text)] sm:col-span-2">
                 Ordre nuit
                 <input
                   type="number"
@@ -1390,9 +1394,9 @@ export default function AdminEmployesPage() {
                   onChange={(event) =>
                     updateEditForm({ ordre_nuit: event.target.value })
                   }
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-50"
                 />
-                <span className="text-xs font-medium text-[#acbdc5]">
+                <span className="text-xs font-medium text-[var(--color-text-muted)]">
                   Ordre utilisé dans le cycle de nuit. Il doit être unique.
                 </span>
                 {editDuplicateNightOrder ? (
@@ -1407,7 +1411,7 @@ export default function AdminEmployesPage() {
             </div>
 
             {editError ? (
-              <div className="mt-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+              <div className="mt-5 border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger-text)]">
                 <p className="font-semibold">{editError}</p>
                 {editErrors.length > 0 ? (
                   <ul className="mt-2 list-disc space-y-1 pl-5">
@@ -1423,7 +1427,7 @@ export default function AdminEmployesPage() {
               <button
                 type="button"
                 onClick={closeEditModal}
-                className="border border-[rgba(172,189,197,0.18)] px-4 py-2 text-sm font-semibold text-[#acbdc5] transition hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+                className="border border-[var(--color-border)] px-4 py-2 text-sm font-semibold text-[var(--color-text-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-text)]"
               >
                 Annuler
               </button>
@@ -1431,7 +1435,7 @@ export default function AdminEmployesPage() {
                 type="button"
                 onClick={handleSaveEmployee}
                 disabled={isSaving}
-                className="border border-[#1AB6FF] bg-[#1AB6FF] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:bg-transparent hover:text-[#e1e3e4] disabled:cursor-wait disabled:opacity-60"
+                className="border border-[var(--color-accent)] bg-[var(--color-accent)] px-4 py-2 text-sm font-semibold text-[#102029] transition hover:bg-transparent hover:text-[var(--color-text)] disabled:cursor-wait disabled:opacity-60"
               >
                 {isSaving ? "Enregistrement..." : "Enregistrer"}
               </button>

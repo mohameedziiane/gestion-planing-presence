@@ -1,6 +1,7 @@
 const jwt = require("jsonwebtoken");
 
 const db = require("../config/db");
+const { getAvatarPublicUrl } = require("../utils/avatarStorage");
 
 const currentUserQuery = `
   SELECT
@@ -19,11 +20,15 @@ const currentUserQuery = `
   LIMIT 1
 `;
 
-function formatUser(user) {
+async function formatUser(user) {
+  const avatarUrl = await getAvatarPublicUrl(user.id);
+
   return {
     id: user.id,
     email: user.email,
     role: user.role,
+    avatar_url: avatarUrl,
+    avatarUrl,
     employe_id: user.employe_id,
     employe: user.employe_id
       ? {
@@ -59,7 +64,7 @@ async function verifyToken(req, res, next) {
     }
 
     req.auth = decoded;
-    req.user = formatUser(user);
+    req.user = await formatUser(user);
 
     return next();
   } catch (error) {

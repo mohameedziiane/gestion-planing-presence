@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 
 import AdminNavbar from "@/components/AdminNavbar";
+import { API_BASE_URL, translateUserMessage } from "@/lib/api";
 
 type DayOption = "yesterday" | "today" | "tomorrow";
 type NestedRecord = Record<string, unknown>;
@@ -246,14 +247,14 @@ function ReposProgressBar({
   return (
     <div className="mt-3">
       <div className="mb-1.5 flex items-center justify-between gap-3 text-[11px] font-medium">
-        <span className="text-[#acbdc5]">
+        <span className="text-[var(--color-text-muted)]">
           Repos {currentDay}/{totalDays} jour{totalDays > 1 ? "s" : ""}
         </span>
-        <span className="text-[#1AB6FF]">{progress}%</span>
+        <span className="text-[var(--color-accent)]">{progress}%</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-[2px] bg-[rgba(172,189,197,0.15)]">
+      <div className="h-1.5 overflow-hidden rounded-[2px] bg-[var(--color-border)]">
         <div
-          className="h-full rounded-[2px] bg-[#1AB6FF]"
+          className="h-full rounded-[2px] bg-[var(--color-accent)]"
           style={{ width: `${progress}%` }}
         />
       </div>
@@ -280,7 +281,7 @@ async function fetchProtectedRows(url: string, token: string) {
   const data = await response.json();
 
   if (!response.ok) {
-    throw new Error(data?.message || "Erreur lors du chargement.");
+    throw new Error(translateUserMessage(data?.message || "Erreur lors du chargement."));
   }
 
   return Array.isArray(data) ? data : [];
@@ -294,11 +295,11 @@ function SummaryItem({
   value: string | number;
 }) {
   return (
-    <article className="border-b border-[rgba(172,189,197,0.15)] p-4 sm:border-r lg:[&:nth-child(3)]:border-r-0 lg:[&:nth-last-child(-n+2)]:border-b-0">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+    <article className="border-b border-[var(--color-border)] p-4 sm:border-r lg:[&:nth-child(3)]:border-r-0 lg:[&:nth-last-child(-n+2)]:border-b-0">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
         {label}
       </p>
-      <p className="mt-2 text-xl font-semibold text-[#e1e3e4]">{value}</p>
+      <p className="mt-2 text-xl font-semibold text-[var(--color-text)]">{value}</p>
     </article>
   );
 }
@@ -311,26 +312,26 @@ function PlanningSection({
   rows: ApiRow[];
 }) {
   return (
-    <section className="border border-[rgba(172,189,197,0.15)] bg-[#38474e]">
-      <div className="border-b border-[rgba(172,189,197,0.15)] px-4 py-3">
-        <h3 className="text-base font-semibold text-[#e1e3e4]">{shift}</h3>
-        <p className="text-xs text-[#acbdc5]">{rows.length} employé(s)</p>
+    <section className="border border-[var(--color-border)] bg-[var(--color-surface)]">
+      <div className="border-b border-[var(--color-border)] px-4 py-3">
+        <h3 className="text-base font-semibold text-[var(--color-text)]">{shift}</h3>
+        <p className="text-xs text-[var(--color-text-muted)]">{rows.length} employé(s)</p>
       </div>
 
       <div className="space-y-3 p-4">
         {rows.length === 0 ? (
-          <p className="text-sm text-[#acbdc5]">Aucun employé assigné.</p>
+          <p className="text-sm text-[var(--color-text-muted)]">Aucun employé assigné.</p>
         ) : (
           rows.map((row, index) => (
             <article
               key={row.id || `${shift}-${index}`}
-              className="border border-[rgba(172,189,197,0.15)] bg-[#334149] p-3"
+              className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3"
             >
-              <h4 className="text-sm font-semibold text-[#e1e3e4]">
+              <h4 className="text-sm font-semibold text-[var(--color-text)]">
                 {getEmployeeName(row) || "Employé non défini"}
               </h4>
-              <p className="mt-1 text-sm text-[#acbdc5]">{getRoleName(row)}</p>
-              <p className="mt-2 text-xs text-[#acbdc5]">{getGroupName(row)}</p>
+              <p className="mt-1 text-sm text-[var(--color-text-muted)]">{getRoleName(row)}</p>
+              <p className="mt-2 text-xs text-[var(--color-text-muted)]">{getGroupName(row)}</p>
             </article>
           ))
         )}
@@ -347,6 +348,7 @@ export default function AdminPage() {
   const [previousReposRows, setPreviousReposRows] = useState<ApiRow[]>([]);
   const [nextReposRows, setNextReposRows] = useState<ApiRow[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isReposOpen, setIsReposOpen] = useState(false);
   const [error, setError] = useState("");
 
   const selectedDate = useMemo(() => {
@@ -396,19 +398,19 @@ export default function AdminPage() {
         const nextDate = addDaysToDate(selectedDate, 1);
         const [planning, repos, previousRepos, nextRepos] = await Promise.all([
           fetchProtectedRows(
-            `http://localhost:5000/api/planning/date/${selectedDate}`,
+            `${API_BASE_URL}/api/planning/date/${selectedDate}`,
             authToken
           ),
           fetchProtectedRows(
-            `http://localhost:5000/api/repos/date/${selectedDate}`,
+            `${API_BASE_URL}/api/repos/date/${selectedDate}`,
             authToken
           ),
           fetchProtectedRows(
-            `http://localhost:5000/api/repos/date/${previousDate}`,
+            `${API_BASE_URL}/api/repos/date/${previousDate}`,
             authToken
           ).catch(() => []),
           fetchProtectedRows(
-            `http://localhost:5000/api/repos/date/${nextDate}`,
+            `${API_BASE_URL}/api/repos/date/${nextDate}`,
             authToken
           ).catch(() => []),
         ]);
@@ -448,28 +450,28 @@ export default function AdminPage() {
   }, [router, selectedDate]);
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
+    <main className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
       <AdminNavbar onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
+          <h1 className="text-2xl font-semibold text-[var(--color-text)] sm:text-3xl">
             Tableau de bord Admin
           </h1>
-          <p className="mt-2 text-sm text-[#acbdc5]">
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
             Planning et repos du jour sélectionné.
           </p>
         </div>
 
-        <div className="mb-8 grid gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="mb-8">
           <section>
-            <label className="mb-3 flex w-fit flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[#acbdc5]">
+            <label className="mb-3 flex w-fit flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
               Date
               <span className="relative inline-flex">
                 <select
                   value={selectedDay}
                   onChange={(event) => setSelectedDay(event.target.value as DayOption)}
-                  className="h-7 min-w-[108px] appearance-none rounded-[3px] border border-[rgba(172,189,197,0.12)] bg-[#334149] pl-2.5 pr-7 text-xs font-medium leading-none text-[#e1e3e4] outline-none transition hover:border-[rgba(172,189,197,0.24)] hover:bg-[#303d44] focus:border-[#1AB6FF] focus:bg-[#303d44] focus:ring-1 focus:ring-[#1AB6FF]/25"
+                  className="h-7 min-w-[108px] appearance-none rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface-muted)] pl-2.5 pr-7 text-xs font-medium leading-none text-[var(--color-text)] outline-none transition hover:border-[var(--color-border)] hover:bg-[var(--color-surface-muted)] focus:border-[var(--color-accent)] focus:bg-[var(--color-surface-muted)] focus:ring-1 focus:ring-[var(--color-accent)]/25"
                 >
                   {dayOptions.map((option) => (
                     <option key={option.value} value={option.value}>
@@ -477,7 +479,7 @@ export default function AdminPage() {
                     </option>
                   ))}
                 </select>
-                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[#acbdc5]">
+                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[var(--color-text-muted)]">
                   <svg
                     aria-hidden="true"
                     viewBox="0 0 12 12"
@@ -494,12 +496,12 @@ export default function AdminPage() {
               </span>
             </label>
 
-            <div className="border border-[rgba(172,189,197,0.15)] bg-[#38474e]">
-              <div className="border-b border-[rgba(172,189,197,0.15)] px-4 py-3">
-                <h2 className="text-base font-semibold text-[#e1e3e4]">
+            <div className="border border-[var(--color-border)] bg-[var(--color-surface)]">
+              <div className="border-b border-[var(--color-border)] px-4 py-3">
+                <h2 className="text-base font-semibold text-[var(--color-text)]">
                   Vue d&apos;ensemble
                 </h2>
-                <p className="text-sm text-[#acbdc5]">
+                <p className="text-sm text-[var(--color-text-muted)]">
                   Situation opérationnelle du jour
                 </p>
               </div>
@@ -509,89 +511,103 @@ export default function AdminPage() {
                 <SummaryItem label="Groupe Soir" value={eveningGroup} />
                 <SummaryItem label="Employé Nuit" value={nightEmployee} />
                 <SummaryItem label="Nombre repos" value={reposRows.length} />
+                <article className="border-b border-[var(--color-border)] p-4 sm:border-r lg:border-b-0 lg:border-r-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+                    Repos
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => setIsReposOpen((current) => !current)}
+                    className="mt-2 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1.5 text-xs font-semibold text-[var(--color-text-muted)] transition hover:border-[var(--color-accent)] hover:text-[var(--color-accent)]"
+                  >
+                    {isReposOpen ? "Masquer repos du jour" : "Afficher repos du jour"}
+                  </button>
+                  {isReposOpen ? (
+                    <div className="mt-4">
+                      <div className="mb-4 flex items-start justify-between gap-3">
+                        <div>
+                          <h2 className="text-xl font-semibold text-[var(--color-text)]">
+                            Repos du jour
+                          </h2>
+                          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                            {reposRows.length} employé(s)
+                          </p>
+                        </div>
+                        <span className="border border-[var(--color-badge-border)] bg-[var(--color-badge-bg)] px-2 py-1 text-xs font-semibold text-[var(--color-badge-text)]">
+                          {selectedDate}
+                        </span>
+                      </div>
+
+                      {isLoading ? (
+                        <p className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-4 text-sm text-[var(--color-text-muted)]">
+                          Chargement...
+                        </p>
+                      ) : error ? (
+                        <p className="border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-4 text-sm text-[var(--color-danger-text)]">
+                          {error}
+                        </p>
+                      ) : reposRows.length === 0 ? (
+                        <p className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-4 text-sm text-[var(--color-text-muted)]">
+                          Aucun repos trouvé pour cette date.
+                        </p>
+                      ) : (
+                        <div className="space-y-3">
+                          {reposRows.map((row, index) => {
+                            const progressInfo = getReposProgress(
+                              row,
+                              previousReposRows,
+                              nextReposRows
+                            );
+
+                            return (
+                              <article
+                                key={row.id || `repos-${index}`}
+                                className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3"
+                              >
+                                <h3 className="text-sm font-semibold text-[var(--color-text)]">
+                                  {getEmployeeName(row) || "Employé non défini"}
+                                </h3>
+                                <p className="mt-1 text-sm text-[var(--color-text-muted)]">
+                                  Type: {getReposType(row)}
+                                </p>
+                                <ReposProgressBar
+                                  currentDay={progressInfo.currentDay}
+                                  totalDays={progressInfo.totalDays}
+                                  progress={progressInfo.progress}
+                                />
+                              </article>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
+                </article>
               </div>
             </div>
           </section>
 
-          <aside className="border border-l-4 border-[rgba(172,189,197,0.15)] border-l-[#1AB6FF] bg-[#38474e] px-4 pb-4 pt-1 sm:px-5 sm:pb-5 sm:pt-1 lg:mt-[62px]">
-            <div className="mb-4 flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-xl font-semibold text-[#e1e3e4]">
-                  Repos du jour
-                </h2>
-                <p className="mt-1 text-sm text-[#acbdc5]">
-                  {reposRows.length} employé(s)
-                </p>
-              </div>
-              <span className="border border-[rgba(172,189,197,0.15)] px-2 py-1 text-xs font-semibold text-[#1AB6FF]">
-                {selectedDate}
-              </span>
-            </div>
-
-            {isLoading ? (
-              <p className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-4 text-sm text-[#acbdc5]">
-                Chargement...
-              </p>
-            ) : error ? (
-              <p className="border border-red-300/30 bg-red-500/10 px-3 py-4 text-sm text-red-100">
-                {error}
-              </p>
-            ) : reposRows.length === 0 ? (
-              <p className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-4 text-sm text-[#acbdc5]">
-                Aucun repos trouvé pour cette date.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {reposRows.map((row, index) => {
-                  const progressInfo = getReposProgress(
-                    row,
-                    previousReposRows,
-                    nextReposRows
-                  );
-
-                  return (
-                    <article
-                      key={row.id || `repos-${index}`}
-                      className="border border-[rgba(172,189,197,0.15)] bg-[#334149] p-3"
-                    >
-                      <h3 className="text-sm font-semibold text-[#e1e3e4]">
-                        {getEmployeeName(row) || "Employé non défini"}
-                      </h3>
-                      <p className="mt-1 text-sm text-[#acbdc5]">
-                        Type: {getReposType(row)}
-                      </p>
-                      <ReposProgressBar
-                        currentDay={progressInfo.currentDay}
-                        totalDays={progressInfo.totalDays}
-                        progress={progressInfo.progress}
-                      />
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </aside>
         </div>
 
         {isLoading ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
             Chargement...
           </p>
         ) : error ? (
-          <p className="border border-red-300/30 bg-red-500/10 px-4 py-5 text-sm text-red-100">
+          <p className="border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-5 text-sm text-[var(--color-danger-text)]">
             {error}
           </p>
         ) : (
           <section id="planning">
             <div className="mb-4">
-              <h2 className="text-xl font-semibold text-[#e1e3e4]">
+              <h2 className="text-xl font-semibold text-[var(--color-text)]">
                 Planning
               </h2>
-              <p className="text-sm text-[#acbdc5]">{selectedDate}</p>
+              <p className="text-sm text-[var(--color-text-muted)]">{selectedDate}</p>
             </div>
 
             {planningRows.length === 0 ? (
-              <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+              <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
                 Aucun planning trouvé pour cette date.
               </p>
             ) : (

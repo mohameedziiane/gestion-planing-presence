@@ -19,10 +19,12 @@ const baseEmployeSelect = `
     e.actif,
     e.repos_base_target,
     e.ordre_nuit,
-    e.controle_periode,
+    e.controle_periode_id,
+    pt.nom AS controle_periode,
     e.utilisateur_id
   FROM employes e
   JOIN groupes g ON e.groupe_id = g.id
+  LEFT JOIN periodes_travail pt ON pt.id = e.controle_periode_id
 `;
 
 const allowedSexes = ["Homme", "Femme"];
@@ -508,6 +510,19 @@ async function findRoleIdByName(roleName, connection = db) {
   return rows[0]?.id || null;
 }
 
+async function findPeriodeTravailIdByName(periodName, connection = db) {
+  if (!periodName) {
+    return null;
+  }
+
+  const [rows] = await connection.query(
+    "SELECT id FROM periodes_travail WHERE LOWER(nom) = LOWER(?) LIMIT 1",
+    [periodName]
+  );
+
+  return rows[0]?.id || null;
+}
+
 async function findEmployeById(id, connection = db) {
   const [rows] = await connection.query(`${baseEmployeSelect} WHERE e.id = ? LIMIT 1`, [
     id,
@@ -541,11 +556,13 @@ async function fetchActiveEmployeesForPlanningConfig(connection = db) {
         e.controle_fixe,
         e.repos_base_target,
         e.ordre_nuit,
-        e.controle_periode,
+        e.controle_periode_id,
+        pt.nom AS controle_periode,
         g.nom AS groupe
         ${nightColumnSelect}
       FROM employes e
       JOIN groupes g ON g.id = e.groupe_id
+      LEFT JOIN periodes_travail pt ON pt.id = e.controle_periode_id
       WHERE e.actif = TRUE
       ORDER BY e.groupe_id ASC, e.id ASC
     `
@@ -656,6 +673,21 @@ async function createEmploye(req, res) {
       });
     }
 
+    const controlePeriodeId =
+      value.controle_fixe === 1 && value.controle_periode
+        ? await findPeriodeTravailIdByName(value.controle_periode, connection)
+        : null;
+
+    if (value.controle_fixe === 1 && !controlePeriodeId) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: "controle_periode does not exist in periodes_travail",
+        errors: [
+          `No periodes_travail row was found for controle_periode '${value.controle_periode}'.`,
+        ],
+      });
+    }
+
     const hashedPassword = await bcrypt.hash(
       value.mot_de_passe,
       PASSWORD_SALT_ROUNDS
@@ -684,7 +716,7 @@ async function createEmploye(req, res) {
           travail_nuit_autorise,
           ordre_nuit,
           controle_fixe,
-          controle_periode
+          controle_periode_id
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
@@ -699,7 +731,7 @@ async function createEmploye(req, res) {
         value.travail_nuit_autorise,
         value.ordre_nuit,
         value.controle_fixe,
-        value.controle_periode,
+        controlePeriodeId,
       ]
     );
 
@@ -721,7 +753,7 @@ async function createEmploye(req, res) {
 
     if (error instanceof PlanningGenerationError && error.statusCode === 422) {
       return res.status(422).json({
-        message: "Invalid employee planning configuration.",
+        message: "Configuration de planning des employés invalide.",
         errors: error.errors || [],
       });
     }
@@ -774,7 +806,7 @@ async function updateEmploye(req, res) {
     if (errors) {
       await connection.rollback();
       return res.status(422).json({
-        message: "Invalid employee planning configuration.",
+        message: "Configuration de planning des employés invalide.",
         errors,
       });
     }
@@ -785,6 +817,21 @@ async function updateEmploye(req, res) {
       await connection.rollback();
       return res.status(400).json({
         message: "groupe_id does not exist",
+      });
+    }
+
+    const controlePeriodeId =
+      value.controle_fixe === 1 && value.controle_periode
+        ? await findPeriodeTravailIdByName(value.controle_periode, connection)
+        : null;
+
+    if (value.controle_fixe === 1 && !controlePeriodeId) {
+      await connection.rollback();
+      return res.status(400).json({
+        message: "controle_periode does not exist in periodes_travail",
+        errors: [
+          `No periodes_travail row was found for controle_periode '${value.controle_periode}'.`,
+        ],
       });
     }
 
@@ -799,7 +846,7 @@ async function updateEmploye(req, res) {
           travail_nuit_autorise = ?,
           ordre_nuit = ?,
           controle_fixe = ?,
-          controle_periode = ?
+          controle_periode_id = ?
         WHERE id = ?
       `,
       [
@@ -810,7 +857,7 @@ async function updateEmploye(req, res) {
         value.travail_nuit_autorise,
         value.ordre_nuit,
         value.controle_fixe,
-        value.controle_periode,
+        controlePeriodeId,
         employeId,
       ]
     );
@@ -833,7 +880,7 @@ async function updateEmploye(req, res) {
 
     if (error instanceof PlanningGenerationError && error.statusCode === 422) {
       return res.status(422).json({
-        message: "Invalid employee planning configuration.",
+        message: "Configuration de planning des employés invalide.",
         errors: error.errors || [],
       });
     }
@@ -893,7 +940,7 @@ async function deleteEmploye(req, res) {
 
     if (error instanceof PlanningGenerationError && error.statusCode === 422) {
       return res.status(422).json({
-        message: "Invalid employee planning configuration.",
+        message: "Configuration de planning des employés invalide.",
         errors: error.errors || [],
       });
     }

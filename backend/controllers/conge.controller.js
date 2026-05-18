@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const { createNotificationsForAdmins } = require("../services/inAppNotification.service");
 
 const ANNUAL_CONGE_DAYS = 18;
 const STATUS_PENDING = "En attente";
@@ -345,10 +346,21 @@ async function createMyDemande(req, res) {
       `${demandeSelectQuery} WHERE dc.id = ? LIMIT 1`,
       [result.insertId]
     );
+    const demande = rows[0];
+
+    try {
+      await createNotificationsForAdmins({
+        type: "demande_conge",
+        titre: "Nouvelle demande de congé",
+        message: `${demande.prenom} ${demande.nom} a envoyé une demande de congé.`,
+      });
+    } catch (notificationError) {
+      console.error("Failed to create conge notification:", notificationError.message);
+    }
 
     return res.status(201).json({
       message: "Conge request created successfully",
-      demande: rows[0],
+      demande,
     });
   } catch (error) {
     console.error(error);

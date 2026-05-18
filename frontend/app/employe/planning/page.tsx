@@ -167,10 +167,13 @@ function StatusBadge({
   tone: "green" | "yellow" | "red" | "muted";
 }) {
   const classes = {
-    green: "border-emerald-300/25 bg-emerald-400/10 text-emerald-100",
-    yellow: "border-yellow-300/25 bg-yellow-400/10 text-yellow-100",
-    red: "border-red-300/25 bg-red-400/10 text-red-100",
-    muted: "border-[rgba(172,189,197,0.15)] bg-[#334149] text-[#acbdc5]",
+    green:
+      "border-[var(--color-badge-success-border)] bg-[var(--color-badge-success-bg)] text-[var(--color-badge-success-text)]",
+    yellow:
+      "border-[var(--color-badge-warning-border)] bg-[var(--color-badge-warning-bg)] text-[var(--color-badge-warning-text)]",
+    red: "border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] text-[var(--color-danger-text)]",
+    muted:
+      "border-[var(--color-badge-border)] bg-[var(--color-badge-bg)] text-[var(--color-badge-text)]",
   };
 
   return (
@@ -182,7 +185,7 @@ function StatusBadge({
 
 function LoadingPanel({ label }: { label: string }) {
   return (
-    <section className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm font-semibold text-[#acbdc5]">
+    <section className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm font-semibold text-[var(--color-text-muted)]">
       {label}
     </section>
   );
@@ -197,13 +200,13 @@ function DayCard({ day, index }: { day: DayStatus; index: number }) {
   const hasPlanning = day.planning.length > 0;
 
   return (
-    <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
+    <article className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h3 className="text-base font-semibold text-[#e1e3e4]">
+          <h3 className="text-base font-semibold text-[var(--color-text)]">
             {dayLabels[index]}
           </h3>
-          <p className="mt-1 text-sm text-[#acbdc5]">{day.date}</p>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">{day.date}</p>
         </div>
         {hasPresentRecord ? (
           <StatusBadge tone="green">Présent</StatusBadge>
@@ -218,32 +221,32 @@ function DayCard({ day, index }: { day: DayStatus; index: number }) {
 
       {isRepos ? (
         <div>
-          <p className="text-sm font-semibold text-[#e1e3e4]">Repos</p>
-          <p className="mt-1 text-sm text-[#acbdc5]">Type: {getReposType(reposRow)}</p>
+          <p className="text-sm font-semibold text-[var(--color-text)]">Repos</p>
+          <p className="mt-1 text-sm text-[var(--color-text-muted)]">Type: {getReposType(reposRow)}</p>
         </div>
       ) : hasPlanning ? (
         <div className="space-y-3">
           {day.planning.map((row, rowIndex) => (
             <div
               key={row.id || `${day.date}-${rowIndex}`}
-              className="border-l-2 border-[#1AB6FF] bg-[#334149] px-3 py-3"
+              className="border-l-2 border-[var(--color-accent)] bg-[var(--color-surface-muted)] px-3 py-3"
             >
-              <p className="text-sm font-semibold text-[#e1e3e4]">
+              <p className="text-sm font-semibold text-[var(--color-text)]">
                 Travail: {getShiftName(row)}
               </p>
-              <p className="mt-1 text-sm text-[#acbdc5]">{getRoleName(row)}</p>
+              <p className="mt-1 text-sm text-[var(--color-text-muted)]">{getRoleName(row)}</p>
             </div>
           ))}
           {hasPresentRecord ? (
-            <p className="text-sm text-emerald-100">
+            <p className="text-sm text-[var(--color-badge-success-text)]">
               Pointé à {getArrivalTime(presenceRow)}
             </p>
           ) : (
-            <p className="text-sm text-[#acbdc5]">Présence non pointée.</p>
+            <p className="text-sm text-[var(--color-text-muted)]">Présence non pointée.</p>
           )}
         </div>
       ) : (
-        <p className="text-sm text-[#acbdc5]">Aucun planning pour cette date.</p>
+        <p className="text-sm text-[var(--color-text-muted)]">Aucun planning pour cette date.</p>
       )}
     </article>
   );
@@ -332,28 +335,28 @@ export default function EmployePlanningPage() {
 
   if (!isAuthorized) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#4c595f] px-6 text-[#e1e3e4]">
-        <p className="text-sm font-semibold text-[#acbdc5]">Chargement...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] px-6 text-[var(--color-text)]">
+        <p className="text-sm font-semibold text-[var(--color-text-muted)]">Chargement...</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
+    <main className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
       <EmployeeNavbar user={user} onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
           <div>
-            <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
+            <h1 className="text-2xl font-semibold text-[var(--color-text)] sm:text-3xl">
               Planning
             </h1>
-            <p className="mt-2 text-sm text-[#acbdc5]">
+            <p className="mt-2 text-sm text-[var(--color-text-muted)]">
               Consultation limitée à cette semaine et la semaine prochaine.
             </p>
           </div>
 
-          <div className="flex w-full border border-[rgba(172,189,197,0.15)] bg-[#334149] p-1 sm:w-auto">
+          <div className="flex w-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-1 sm:w-auto">
             {(["current", "next"] as WeekMode[]).map((mode) => (
               <button
                 key={mode}
@@ -361,8 +364,8 @@ export default function EmployePlanningPage() {
                 onClick={() => setWeekMode(mode)}
                 className={`h-9 flex-1 px-4 text-sm font-semibold transition sm:flex-none ${
                   weekMode === mode
-                    ? "bg-[#1AB6FF] text-white"
-                    : "text-[#acbdc5] hover:text-[#e1e3e4]"
+                    ? "bg-[var(--color-accent)] text-white"
+                    : "text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                 }`}
               >
                 {mode === "current" ? "Cette semaine" : "Semaine prochaine"}
@@ -374,7 +377,7 @@ export default function EmployePlanningPage() {
         {isWeekLoading ? (
           <LoadingPanel label="Chargement du planning..." />
         ) : weekError ? (
-          <p className="border border-red-300/30 bg-red-500/10 px-4 py-5 text-sm text-red-100">
+          <p className="border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-5 text-sm text-[var(--color-danger-text)]">
             {weekError}
           </p>
         ) : (

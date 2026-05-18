@@ -1,4 +1,5 @@
 const db = require("../config/db");
+const { createNotificationsForEmployeeIds } = require("../services/inAppNotification.service");
 
 const planningSelectQuery = `
   SELECT
@@ -375,6 +376,16 @@ async function createPlanning(req, res) {
 
     const createdPlanning = await findPlanningById(result.insertId);
 
+    try {
+      await createNotificationsForEmployeeIds([createdPlanning.employe_id], {
+        type: "planning_modifie",
+        titre: "Planning mis à jour",
+        message: `Votre planning du ${createdPlanning.date} a été mis à jour.`,
+      });
+    } catch (notificationError) {
+      console.error("Failed to create planning notification:", notificationError.message);
+    }
+
     return res.status(201).json({
       message: "Planning row created successfully",
       planning: createdPlanning,
@@ -471,6 +482,16 @@ async function updatePlanning(req, res) {
 
     const updatedPlanning = await findPlanningById(planningId);
 
+    try {
+      await createNotificationsForEmployeeIds([updatedPlanning.employe_id], {
+        type: "planning_modifie",
+        titre: "Planning mis à jour",
+        message: `Votre planning du ${updatedPlanning.date} a été mis à jour.`,
+      });
+    } catch (notificationError) {
+      console.error("Failed to create planning notification:", notificationError.message);
+    }
+
     return res.json({
       message: "Planning row updated successfully",
       planning: updatedPlanning,
@@ -503,6 +524,16 @@ async function deletePlanning(req, res) {
     }
 
     await db.query("DELETE FROM planning WHERE id = ?", [planningId]);
+
+    try {
+      await createNotificationsForEmployeeIds([existingPlanning.employe_id], {
+        type: "planning_modifie",
+        titre: "Planning mis à jour",
+        message: `Votre planning du ${existingPlanning.date} a été mis à jour.`,
+      });
+    } catch (notificationError) {
+      console.error("Failed to create planning notification:", notificationError.message);
+    }
 
     return res.json({
       message: "Planning row deleted successfully",

@@ -20,7 +20,11 @@ router.use(verifyToken);
 router.get("/me", authorizeEmployeeOnly, getMyCertificats);
 router.post("/me", authorizeEmployeeOnly, createMyCertificat);
 
-router.get("/admin", authorizeRoles("admin"), getAdminCertificats);
+router.get(
+  "/admin",
+  authorizeRoles("admin", "directeur"),
+  getAdminCertificats
+);
 router.post(
   "/admin/:id/validate",
   authorizeRoles("admin"),

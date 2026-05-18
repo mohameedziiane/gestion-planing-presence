@@ -118,34 +118,34 @@ function getInclusiveDays(startDate: string, endDate: string) {
 
 function getStatusClasses(status: string) {
   if (status === "Accepté") {
-    return "border-emerald-300/25 bg-emerald-400/10 text-emerald-100";
+    return "border-[var(--color-badge-success-border)] bg-[var(--color-badge-success-bg)] text-[var(--color-badge-success-text)]";
   }
 
-  if (status === "Refusé") {
-    return "border-red-300/25 bg-red-400/10 text-red-100";
+  if (status === "Refusé" || status === "Annulé") {
+    return "border-[var(--color-badge-danger-border)] bg-[var(--color-badge-danger-bg)] text-[var(--color-badge-danger-text)]";
   }
 
-  return "border-yellow-300/25 bg-yellow-400/10 text-yellow-100";
+  return "border-[var(--color-badge-warning-border)] bg-[var(--color-badge-warning-bg)] text-[var(--color-badge-warning-text)]";
 }
 
 function SummaryCard({ label, value }: { label: string; value: number }) {
   return (
-    <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+    <article className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
         {label}
       </p>
-      <p className="mt-2 text-2xl font-semibold text-[#e1e3e4]">{value}</p>
+      <p className="mt-2 text-2xl font-semibold text-[var(--color-text)]">{value}</p>
     </article>
   );
 }
 
 function PreviewCard({ label, value }: { label: string; value: number }) {
   return (
-    <article className="border border-[rgba(172,189,197,0.15)] bg-[#334149] p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+    <article className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
         {label}
       </p>
-      <p className="mt-1 text-lg font-semibold text-[#e1e3e4]">{value}</p>
+      <p className="mt-1 text-lg font-semibold text-[var(--color-text)]">{value}</p>
     </article>
   );
 }
@@ -442,22 +442,22 @@ export default function AdminCongesPage() {
 
   if (!isAllowed) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#4c595f] px-6 text-[#e1e3e4]">
-        <p className="text-sm font-semibold text-[#acbdc5]">Chargement...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] px-6 text-[var(--color-text)]">
+        <p className="text-sm font-semibold text-[var(--color-text-muted)]">Chargement...</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
+    <main className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
       <AdminNavbar onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6">
-          <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
+          <h1 className="text-2xl font-semibold text-[var(--color-text)] sm:text-3xl">
             Gestion des congés
           </h1>
-          <p className="mt-2 text-sm text-[#acbdc5]">
+          <p className="mt-2 text-sm text-[var(--color-text-muted)]">
             Traitez les demandes de congé envoyées par les employés.
           </p>
         </div>
@@ -470,29 +470,29 @@ export default function AdminCongesPage() {
         </div>
 
         {errorMessage ? (
-          <p className="mb-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <p className="mb-5 border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger-text)]">
             {errorMessage}
           </p>
         ) : null}
         {successMessage ? (
-          <p className="mb-5 border border-emerald-300/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-100">
+          <p className="mb-5 border border-[var(--color-success-border)] bg-[var(--color-success-bg)] px-4 py-3 text-sm text-[var(--color-success-text)]">
             {successMessage}
           </p>
         ) : null}
 
-        <section className="mb-8 border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 sm:p-5">
+        <section className="mb-8 border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5">
           <div className="mb-5">
-            <h2 className="text-xl font-semibold text-[#e1e3e4]">
+            <h2 className="text-xl font-semibold text-[var(--color-text)]">
               Déduction congé pour absence médicale
             </h2>
-            <p className="mt-1 text-sm text-[#acbdc5]">
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
               Calculez les jours à déduire du solde congé lorsqu&apos;un certificat médical ne couvre qu&apos;une partie de l&apos;absence.
             </p>
           </div>
 
           <form onSubmit={handleMedicalDeductionSubmit}>
             <div className="grid gap-4 lg:grid-cols-2">
-              <label className="flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+              <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
                 Employé
                 <select
                   value={medicalForm.employe_id}
@@ -501,7 +501,7 @@ export default function AdminCongesPage() {
                   }
                   disabled={isEmployeesLoading}
                   required
-                  className="h-10 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-[#e1e3e4] outline-none focus:border-[#1AB6FF] disabled:cursor-not-allowed disabled:opacity-70"
+                  className="h-10 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)] disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   <option value="">
                     {isEmployeesLoading
@@ -516,7 +516,7 @@ export default function AdminCongesPage() {
                 </select>
               </label>
 
-              <label className="flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+              <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
                 Jours couverts par certificat
                 <input
                   type="number"
@@ -528,11 +528,11 @@ export default function AdminCongesPage() {
                     })
                   }
                   required
-                  className="h-10 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="h-10 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+              <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
                 Date début absence
                 <input
                   type="date"
@@ -543,11 +543,11 @@ export default function AdminCongesPage() {
                     })
                   }
                   required
-                  className="h-10 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="h-10 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 />
               </label>
 
-              <label className="flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+              <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
                 Date fin absence
                 <input
                   type="date"
@@ -558,7 +558,7 @@ export default function AdminCongesPage() {
                     })
                   }
                   required
-                  className="h-10 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="h-10 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 />
               </label>
             </div>
@@ -578,7 +578,7 @@ export default function AdminCongesPage() {
               />
             </div>
 
-            <label className="mt-4 flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+            <label className="mt-4 flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
               Commentaire
               <textarea
                 value={medicalForm.commentaire}
@@ -586,12 +586,12 @@ export default function AdminCongesPage() {
                   updateMedicalForm({ commentaire: event.target.value })
                 }
                 rows={3}
-                className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
               />
             </label>
 
             {medicalValidationMessage ? (
-              <p className="mt-4 border border-yellow-300/30 bg-yellow-500/10 px-4 py-3 text-sm text-yellow-100">
+              <p className="mt-4 border border-[var(--color-warning-border)] bg-[var(--color-warning-bg)] px-4 py-3 text-sm text-[var(--color-warning-text)]">
                 {medicalValidationMessage}
               </p>
             ) : null}
@@ -599,7 +599,7 @@ export default function AdminCongesPage() {
             <button
               type="submit"
               disabled={isMedicalSubmitting || Boolean(medicalValidationMessage)}
-              className="mt-4 h-10 bg-[#1AB6FF] px-5 text-sm font-bold text-white transition hover:bg-[#169CDC] disabled:cursor-not-allowed disabled:opacity-70"
+              className="mt-4 h-10 border border-transparent bg-[var(--color-accent)] px-5 text-sm font-bold text-white transition hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-70"
             >
               {isMedicalSubmitting
                 ? "Application..."
@@ -610,20 +610,20 @@ export default function AdminCongesPage() {
 
         <section className="mb-8">
           <div className="mb-5">
-            <h2 className="text-xl font-semibold text-[#e1e3e4]">
+            <h2 className="text-xl font-semibold text-[var(--color-text)]">
               Historique des déductions médicales
             </h2>
-            <p className="mt-1 text-sm text-[#acbdc5]">
+            <p className="mt-1 text-sm text-[var(--color-text-muted)]">
               Déductions appliquées par l&apos;administration pour absences médicales partiellement couvertes.
             </p>
           </div>
 
           {isMedicalDeductionsLoading ? (
-            <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+            <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
               Chargement des déductions médicales...
             </p>
           ) : medicalDeductions.length === 0 ? (
-            <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+            <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
               Aucune déduction médicale enregistrée.
             </p>
           ) : (
@@ -631,22 +631,22 @@ export default function AdminCongesPage() {
               {medicalDeductions.map((deduction) => (
                 <article
                   key={deduction.id}
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
                 >
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <div>
-                      <h3 className="text-base font-semibold text-[#e1e3e4]">
+                      <h3 className="text-base font-semibold text-[var(--color-text)]">
                         {getMedicalDeductionEmployeeName(deduction)}
                       </h3>
-                      <p className="mt-1 text-sm text-[#acbdc5]">
+                      <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                         {deduction.groupe || "-"}
                       </p>
                     </div>
-                    <span className="border border-[#1AB6FF]/25 bg-[#1AB6FF]/10 px-2.5 py-1 text-xs font-semibold text-[#bdeaff]">
+                    <span className="border border-[var(--color-accent)]/25 bg-[var(--color-accent)]/10 px-2.5 py-1 text-xs font-semibold text-[var(--color-accent)]">
                       {deduction.jours_deduits_conge} jour(s) déduit(s)
                     </span>
                   </div>
-                  <div className="grid gap-3 text-sm text-[#acbdc5] sm:grid-cols-2">
+                  <div className="grid gap-3 text-sm text-[var(--color-text-muted)] sm:grid-cols-2">
                     <p>
                       Période: {deduction.date_debut_absence} -{" "}
                       {deduction.date_fin_absence}
@@ -658,10 +658,10 @@ export default function AdminCongesPage() {
                     </p>
                     <p>Déduits congé: {deduction.jours_deduits_conge}</p>
                   </div>
-                  <p className="mt-3 text-sm text-[#acbdc5]">
+                  <p className="mt-3 text-sm text-[var(--color-text-muted)]">
                     Commentaire admin: {deduction.commentaire_admin || "-"}
                   </p>
-                  <p className="mt-2 text-xs text-[#acbdc5]">
+                  <p className="mt-2 text-xs text-[var(--color-text-muted)]">
                     Date d&apos;application: {deduction.decided_at || deduction.created_at || "-"}
                   </p>
                 </article>
@@ -671,27 +671,27 @@ export default function AdminCongesPage() {
         </section>
 
         {isLoading ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
             Chargement des demandes...
           </p>
         ) : demandes.length === 0 ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
             Aucune demande trouvée.
           </p>
         ) : (
           <>
-            <section className="mb-8 border border-l-4 border-[rgba(172,189,197,0.15)] border-l-[#1AB6FF] bg-[#38474e] p-4 sm:p-5">
+            <section className="mb-8 border border-l-4 border-[var(--color-border)] border-l-[var(--color-accent)] bg-[var(--color-surface)] p-4 sm:p-5">
               <div className="mb-5">
-                <h2 className="text-xl font-semibold text-[#e1e3e4]">
+                <h2 className="text-xl font-semibold text-[var(--color-text)]">
                   Demandes en attente
                 </h2>
-                <p className="mt-1 text-sm text-[#acbdc5]">
+                <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                   Les demandes à traiter en priorité.
                 </p>
               </div>
 
               {pendingDemandes.length === 0 ? (
-                <p className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-4 py-5 text-sm text-[#acbdc5]">
+                <p className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
                   Aucune demande de congé en attente.
                 </p>
               ) : (
@@ -699,14 +699,14 @@ export default function AdminCongesPage() {
                   {pendingDemandes.map((demande) => (
                     <article
                       key={demande.id}
-                      className="border border-yellow-300/25 bg-[#334149] p-4"
+                      className="border border-yellow-300/25 bg-[var(--color-surface-muted)] p-4"
                     >
                       <div className="mb-4 flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="text-base font-semibold text-[#e1e3e4]">
+                          <h3 className="text-base font-semibold text-[var(--color-text)]">
                             {getEmployeeName(demande)}
                           </h3>
-                          <p className="mt-1 text-sm text-[#acbdc5]">
+                          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                             {demande.groupe || "-"}
                           </p>
                         </div>
@@ -714,13 +714,13 @@ export default function AdminCongesPage() {
                           {demande.statut}
                         </span>
                       </div>
-                      <div className="grid gap-3 text-sm text-[#acbdc5] sm:grid-cols-2">
+                      <div className="grid gap-3 text-sm text-[var(--color-text-muted)] sm:grid-cols-2">
                         <p>Début: {demande.date_debut}</p>
                         <p>Fin: {demande.date_fin}</p>
                         <p>Jours: {demande.nombre_jours}</p>
                         <p>Type: {demande.type_conge}</p>
                       </div>
-                      <p className="mt-3 text-sm text-[#acbdc5]">
+                      <p className="mt-3 text-sm text-[var(--color-text-muted)]">
                         Motif: {demande.motif || "-"}
                       </p>
                       <textarea
@@ -730,14 +730,14 @@ export default function AdminCongesPage() {
                         }
                         rows={2}
                         placeholder="Commentaire admin"
-                        className="mt-4 w-full border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-3 py-2 text-sm text-[#e1e3e4] outline-none placeholder:text-[#acbdc5] focus:border-[#1AB6FF]"
+                        className="mt-4 w-full border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
                       />
                       <div className="mt-4 flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={() => decide(demande.id, "accept")}
                           disabled={activeId === demande.id}
-                          className="h-9 border border-emerald-300/30 px-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-70"
+                          className="h-9 border border-[var(--color-action-success-border)] bg-[var(--color-action-success-bg)] px-3 text-sm font-semibold text-[var(--color-action-success-text)] transition hover:bg-emerald-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
                         >
                           Accepter
                         </button>
@@ -745,7 +745,7 @@ export default function AdminCongesPage() {
                           type="button"
                           onClick={() => decide(demande.id, "refuse")}
                           disabled={activeId === demande.id}
-                          className="h-9 border border-red-300/30 px-3 text-sm font-semibold text-red-100 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-70"
+                          className="h-9 border border-[var(--color-action-danger-border)] bg-[var(--color-action-danger-bg)] px-3 text-sm font-semibold text-[var(--color-action-danger-text)] transition hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
                         >
                           Refuser
                         </button>
@@ -759,10 +759,10 @@ export default function AdminCongesPage() {
             <section>
               <div className="mb-5 flex flex-col justify-between gap-4 sm:flex-row sm:items-end">
                 <div>
-                  <h2 className="text-xl font-semibold text-[#e1e3e4]">
+                  <h2 className="text-xl font-semibold text-[var(--color-text)]">
                     Historique des demandes
                   </h2>
-                  <p className="mt-1 text-sm text-[#acbdc5]">
+                  <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                     Demandes acceptées, refusées ou annulées.
                   </p>
                 </div>
@@ -774,8 +774,8 @@ export default function AdminCongesPage() {
                       onClick={() => setFilter(item)}
                       className={`h-9 border px-4 text-sm font-semibold transition ${
                         filter === item
-                          ? "border-[#1AB6FF] bg-[#1AB6FF] text-white"
-                          : "border-[rgba(172,189,197,0.18)] text-[#acbdc5] hover:border-[#1AB6FF] hover:text-[#e1e3e4]"
+                          ? "border-[var(--color-accent)] bg-[var(--color-accent)] text-white"
+                          : "border-[var(--color-action-primary-border)] bg-[var(--color-action-primary-bg)] text-[var(--color-action-primary-text)] hover:bg-[var(--color-accent)] hover:text-white"
                       }`}
                     >
                       {item}
@@ -785,13 +785,13 @@ export default function AdminCongesPage() {
               </div>
 
               {historyDemandes.length === 0 ? (
-                <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
+                <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
                   Aucune demande historique trouvée.
                 </p>
               ) : (
-          <section className="overflow-x-auto border border-[rgba(172,189,197,0.15)] bg-[#38474e]">
+          <section className="overflow-x-auto border border-[var(--color-border)] bg-[var(--color-surface)]">
             <table className="w-full min-w-[1180px] border-collapse text-sm">
-              <thead className="bg-[#334149] text-left">
+              <thead className="bg-[var(--color-surface-muted)] text-left">
                 <tr>
                   {[
                     "Employé",
@@ -805,7 +805,7 @@ export default function AdminCongesPage() {
                   ].map((label) => (
                     <th
                       key={label}
-                      className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[#acbdc5]"
+                      className="border border-[var(--color-border)] px-4 py-3 text-xs font-bold uppercase tracking-wide text-[var(--color-text-muted)]"
                     >
                       {label}
                     </th>
@@ -815,32 +815,32 @@ export default function AdminCongesPage() {
               <tbody>
                 {historyDemandes.map((demande) => (
                   <tr key={demande.id} className="align-top">
-                    <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3">
-                      <p className="font-semibold text-[#e1e3e4]">
+                    <td className="border border-[var(--color-border)] px-4 py-3">
+                      <p className="font-semibold text-[var(--color-text)]">
                         {getEmployeeName(demande)}
                       </p>
-                      <p className="mt-1 text-xs text-[#acbdc5]">
+                      <p className="mt-1 text-xs text-[var(--color-text-muted)]">
                         {demande.groupe || "-"}
                       </p>
                     </td>
-                    <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-[#acbdc5]">
+                    <td className="border border-[var(--color-border)] px-4 py-3 text-[var(--color-text-muted)]">
                       {demande.date_debut} - {demande.date_fin}
                     </td>
-                    <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-[#e1e3e4]">
+                    <td className="border border-[var(--color-border)] px-4 py-3 text-[var(--color-text)]">
                       {demande.nombre_jours}
                     </td>
-                    <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3 text-[#acbdc5]">
+                    <td className="border border-[var(--color-border)] px-4 py-3 text-[var(--color-text-muted)]">
                       {demande.type_conge}
                     </td>
-                    <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3">
+                    <td className="border border-[var(--color-border)] px-4 py-3">
                       <span className={`border px-2.5 py-1 text-xs font-semibold ${getStatusClasses(demande.statut)}`}>
                         {demande.statut}
                       </span>
                     </td>
-                    <td className="max-w-[220px] border border-[rgba(172,189,197,0.15)] px-4 py-3 text-[#acbdc5]">
+                    <td className="max-w-[220px] border border-[var(--color-border)] px-4 py-3 text-[var(--color-text-muted)]">
                       {demande.motif || "-"}
                     </td>
-                    <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3">
+                    <td className="border border-[var(--color-border)] px-4 py-3">
                       {demande.statut === "En attente" ? (
                         <textarea
                           value={comments[demande.id] || ""}
@@ -849,27 +849,27 @@ export default function AdminCongesPage() {
                           }
                           rows={2}
                           placeholder="Commentaire"
-                          className="w-56 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none placeholder:text-[#acbdc5] focus:border-[#1AB6FF]"
+                          className="w-56 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none placeholder:text-[var(--color-text-muted)] focus:border-[var(--color-accent)]"
                         />
                       ) : (
                         <div>
-                          <p className="text-[#acbdc5]">
+                          <p className="text-[var(--color-text-muted)]">
                             {demande.commentaire_admin || "-"}
                           </p>
-                          <p className="mt-1 text-xs text-[#acbdc5]">
+                          <p className="mt-1 text-xs text-[var(--color-text-muted)]">
                             {demande.decided_at || ""}
                           </p>
                         </div>
                       )}
                     </td>
-                    <td className="border border-[rgba(172,189,197,0.15)] px-4 py-3">
+                    <td className="border border-[var(--color-border)] px-4 py-3">
                       {demande.statut === "En attente" ? (
                         <div className="flex flex-wrap gap-2">
                           <button
                             type="button"
                             onClick={() => decide(demande.id, "accept")}
                             disabled={activeId === demande.id}
-                            className="h-9 border border-emerald-300/30 px-3 text-sm font-semibold text-emerald-100 transition hover:bg-emerald-400/10 disabled:cursor-not-allowed disabled:opacity-70"
+                            className="h-9 border border-[var(--color-action-success-border)] bg-[var(--color-action-success-bg)] px-3 text-sm font-semibold text-[var(--color-action-success-text)] transition hover:bg-emerald-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
                           >
                             Accepter
                           </button>
@@ -877,13 +877,13 @@ export default function AdminCongesPage() {
                             type="button"
                             onClick={() => decide(demande.id, "refuse")}
                             disabled={activeId === demande.id}
-                            className="h-9 border border-red-300/30 px-3 text-sm font-semibold text-red-100 transition hover:bg-red-400/10 disabled:cursor-not-allowed disabled:opacity-70"
+                            className="h-9 border border-[var(--color-action-danger-border)] bg-[var(--color-action-danger-bg)] px-3 text-sm font-semibold text-[var(--color-action-danger-text)] transition hover:bg-red-600 hover:text-white disabled:cursor-not-allowed disabled:opacity-70"
                           >
                             Refuser
                           </button>
                         </div>
                       ) : (
-                        <span className="text-[#acbdc5]">Traitée</span>
+                        <span className="text-[var(--color-text-muted)]">Traitée</span>
                       )}
                     </td>
                   </tr>

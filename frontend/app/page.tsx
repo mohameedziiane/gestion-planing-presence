@@ -4,6 +4,8 @@ import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { FormEvent, useState } from "react";
 
+import { API_BASE_URL, translateUserMessage } from "@/lib/api";
+
 type LoginUser = {
   id: number;
   email: string;
@@ -73,7 +75,7 @@ export default function LoginPage() {
     setIsLoading(true);
 
     try {
-      const response = await fetch("http://localhost:5000/api/auth/login", {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -83,7 +85,7 @@ export default function LoginPage() {
       const data = (await response.json()) as LoginResponse;
 
       if (!response.ok || !data.token || !data.user) {
-        setError(data.message || "Login failed");
+        setError(translateUserMessage(data.message || "Login failed"));
         return;
       }
 
@@ -93,7 +95,7 @@ export default function LoginPage() {
 
       router.push(roleRedirects[data.user.role] || "/");
     } catch {
-      setError("Unable to connect to the backend server");
+      setError("Impossible de contacter le serveur backend.");
     } finally {
       setIsLoading(false);
     }
@@ -107,7 +109,7 @@ export default function LoginPage() {
         <div className="mx-auto w-[calc(100%-48px)] max-w-[352px] sm:mx-0 sm:ml-[104px] sm:w-[352px]">
           <div className="mb-7 flex flex-col items-center text-center">
             <Image
-              src="/logo.webp"
+              src="/logo.png"
               alt="Gare Routière de Taza"
               width={86}
               height={86}
@@ -129,7 +131,7 @@ export default function LoginPage() {
             {error ? (
               <div
                 role="alert"
-                className="rounded-none border border-red-300/30 bg-red-500/10 px-3 py-2 text-sm text-red-100"
+                className="rounded-none border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-3 py-2 text-sm text-[var(--color-danger-text)]"
               >
                 {error}
               </div>

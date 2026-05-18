@@ -1,8 +1,4 @@
-const db = require("../config/db");
-const {
-  streamPlanningPdf,
-  streamPresencePdf,
-} = require("../services/pdf.service");
+const { buildPlanningExcelExport } = require("../services/export.service");
 
 function isValidDateString(value) {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
@@ -44,7 +40,7 @@ function getDateRange(query) {
   };
 }
 
-async function exportPlanningPdf(req, res) {
+async function exportPlanningExcel(req, res) {
   try {
     const { error, value } = getDateRange(req.query);
 
@@ -54,76 +50,29 @@ async function exportPlanningPdf(req, res) {
       });
     }
 
-    const [rows] = await db.query(
-      `
-        SELECT
-          CONCAT(e.prenom, ' ', e.nom) AS full_name,
-          g.nom AS groupe,
-          DATE_FORMAT(p._date, '%Y-%m-%d') AS date,
-          pt.nom AS periode_travail,
-          rt.nom AS role_travail
-        FROM planning p
-        JOIN employes e ON e.id = p.employe_id
-        JOIN groupes g ON g.id = e.groupe_id
-        JOIN periodes_travail pt ON pt.id = p.periode_id
-        JOIN roles_travail rt ON rt.id = p.role_travail_id
-        WHERE p._date BETWEEN ? AND ?
-        ORDER BY p._date ASC, e.nom ASC, e.prenom ASC, pt.id ASC
-      `,
-      [value.startDate, value.endDate]
+    const { buffer, filename } = await buildPlanningExcelExport(
+      value.startDate,
+      value.endDate
     );
 
-    await streamPlanningPdf(res, rows, value.startDate, value.endDate);
+    res.setHeader(
+      "Content-Type",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    );
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+
+    return res.send(buffer);
   } catch (error) {
     console.error(error);
 
     if (!res.headersSent) {
       return res.status(500).json({
-        message: "Failed to export planning PDF",
-      });
-    }
-  }
-}
-
-async function exportPresencePdf(req, res) {
-  try {
-    const { error, value } = getDateRange(req.query);
-
-    if (error) {
-      return res.status(400).json({
-        message: error,
-      });
-    }
-
-    const [rows] = await db.query(
-      `
-        SELECT
-          CONCAT(e.prenom, ' ', e.nom) AS full_name,
-          DATE_FORMAT(p._date, '%Y-%m-%d') AS date,
-          p.statut,
-          COALESCE(TIME_FORMAT(p.heure_arrivee, '%H:%i:%s'), '-') AS heure_arrivee,
-          COALESCE(p.adresse_ip, '-') AS adresse_ip
-        FROM presence p
-        JOIN employes e ON e.id = p.employe_id
-        WHERE p._date BETWEEN ? AND ?
-        ORDER BY p._date ASC, e.nom ASC, e.prenom ASC
-      `,
-      [value.startDate, value.endDate]
-    );
-
-    await streamPresencePdf(res, rows, value.startDate, value.endDate);
-  } catch (error) {
-    console.error(error);
-
-    if (!res.headersSent) {
-      return res.status(500).json({
-        message: "Failed to export presence PDF",
+        message: "Failed to export planning Excel",
       });
     }
   }
 }
 
 module.exports = {
-  exportPlanningPdf,
-  exportPresencePdf,
+  exportPlanningExcel,
 };

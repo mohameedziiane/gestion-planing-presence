@@ -1,4 +1,11 @@
 const db = require("../config/db");
+const { getClientIp } = require("../utils/clientIp");
+const { getCurrentCasablancaDateTime } = require("../utils/casablancaDateTime");
+const {
+  AbsenceServiceError,
+  synchronizeAbsences,
+} = require("../services/absence.service");
+const { createNotificationsForAdmins } = require("../services/inAppNotification.service");
 
 const STATUS_PRESENT = "Pr\u00e9sent";
 const STATUS_ABSENT = "Absent";
@@ -134,80 +141,6 @@ function validatePresencePayload(payload) {
       adresse_ip: adresseIp,
     },
   };
-}
-
-function getCurrentCasablancaDateTime() {
-  const formatter = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Casablanca",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  });
-  const parts = formatter.formatToParts(new Date());
-  const values = Object.fromEntries(
-    parts
-      .filter((part) => part.type !== "literal")
-      .map((part) => [part.type, part.value])
-  );
-
-  return {
-    date: `${values.year}-${values.month}-${values.day}`,
-    time: `${values.hour}:${values.minute}:${values.second}`,
-  };
-}
-
-function normalizeIp(ip) {
-  const trimmedIp = String(ip || "").trim();
-
-  if (trimmedIp.startsWith("::ffff:")) {
-    return trimmedIp.slice(7);
-  }
-
-  return trimmedIp;
-}
-
-function getClientIp(req) {
-  const forwardedFor = req.headers["x-forwarded-for"];
-  let rawIp = "";
-
-  if (typeof forwardedFor === "string" && forwardedFor.trim()) {
-    rawIp = forwardedFor.split(",")[0].trim();
-  } else if (Array.isArray(forwardedFor) && forwardedFor.length > 0) {
-    rawIp = String(forwardedFor[0]).trim();
-  } else {
-    rawIp = req.ip || req.socket?.remoteAddress || "";
-  }
-
-  return normalizeIp(rawIp);
-}
-
-function isInternalNetwork(ip) {
-  const normalizedIp = normalizeIp(ip);
-
-  if (!normalizedIp) {
-    return false;
-  }
-
-  if (normalizedIp === "::1" || normalizedIp === "127.0.0.1") {
-    return true;
-  }
-
-  if (normalizedIp.startsWith("10.") || normalizedIp.startsWith("192.168.")) {
-    return true;
-  }
-
-  if (normalizedIp.startsWith("172.")) {
-    const segments = normalizedIp.split(".");
-    const secondOctet = Number(segments[1]);
-
-    return secondOctet >= 16 && secondOctet <= 31;
-  }
-
-  return false;
 }
 
 async function employeExists(id) {
@@ -464,16 +397,10 @@ async function pointerPresence(req, res) {
       });
     }
 
-    const clientIp = getClientIp(req);
-
-    if (!isInternalNetwork(clientIp)) {
-      return res.status(403).json({
-        message: "Pointage is only allowed from the internal network",
-      });
-    }
+    const clientIp = req.clientIp || getClientIp(req);
 
     const { date, time } = getCurrentCasablancaDateTime();
-    const [reposRows, planningRows, duplicateRows] = await Promise.all([
+    const [reposRows, planningRows, presenceRows] = await Promise.all([
       db.query(
         "SELECT id FROM repos WHERE employe_id = ? AND _date = ? LIMIT 1",
         [req.user.employe_id, date]
@@ -491,7 +418,12 @@ async function pointerPresence(req, res) {
         [req.user.employe_id, date]
       ),
       db.query(
-        "SELECT id FROM presence WHERE employe_id = ? AND _date = ? LIMIT 1",
+        `
+          SELECT id, statut
+          FROM presence
+          WHERE employe_id = ? AND _date = ?
+          LIMIT 1
+        `,
         [req.user.employe_id, date]
       ),
     ]);
@@ -508,9 +440,38 @@ async function pointerPresence(req, res) {
       });
     }
 
-    if (duplicateRows[0].length > 0) {
+    const existingPresence = presenceRows[0][0] || null;
+
+    if (existingPresence?.statut === STATUS_PRESENT) {
       return res.status(409).json({
         message: "Presence already recorded for today",
+      });
+    }
+
+    if (existingPresence?.statut === STATUS_ABSENT) {
+      await db.query(
+        `
+          UPDATE presence
+          SET
+            heure_arrivee = ?,
+            statut = ?,
+            adresse_ip = ?
+          WHERE id = ?
+        `,
+        [time, STATUS_PRESENT, clientIp, existingPresence.id]
+      );
+
+      const updatedPresence = await findPresenceById(existingPresence.id);
+
+      return res.json({
+        message: "Pointage enregistré. L'absence a été convertie en présence.",
+        presence: updatedPresence,
+      });
+    }
+
+    if (existingPresence?.statut === STATUS_REPOS) {
+      return res.status(400).json({
+        message: "Employee is marked as repos today",
       });
     }
 
@@ -529,6 +490,18 @@ async function pointerPresence(req, res) {
     );
 
     const createdPresence = await findPresenceById(result.insertId);
+
+    if (createdPresence.statut === STATUS_ABSENT) {
+      try {
+        await createNotificationsForAdmins({
+          type: "absence_employe",
+          titre: "Employé marqué absent",
+          message: `${createdPresence.prenom} ${createdPresence.nom} a été marqué absent le ${createdPresence.date}.`,
+        });
+      } catch (notificationError) {
+        console.error("Failed to create absence notification:", notificationError.message);
+      }
+    }
 
     return res.status(201).json({
       message: "Attendance marked successfully",
@@ -606,128 +579,34 @@ async function createPresence(req, res) {
 
 async function syncAbsences(req, res) {
   try {
-    const date = String(req.body?.date || "").trim();
+    const result = await synchronizeAbsences(req.body?.date);
 
-    if (!isValidDateString(date)) {
-      return res.status(400).json({
-        message: "date must be a valid date in YYYY-MM-DD format",
-      });
-    }
-
-    const connection = await db.getConnection();
-
-    try {
-      await connection.beginTransaction();
-
-      const [planningRows] = await connection.query(
-        `
-          SELECT DISTINCT p.employe_id
-          FROM planning p
-          JOIN roles_travail rt ON rt.id = p.role_travail_id
-          WHERE p._date = ?
-            AND rt.nom <> 'Repos'
-          ORDER BY p.employe_id ASC
-        `,
-        [date]
-      );
-      const planningEmployeeIds = planningRows.map((row) =>
-        Number(row.employe_id)
-      );
-
-      if (planningEmployeeIds.length === 0) {
-        await connection.commit();
-
-        return res.json({
-          date,
-          insertedCount: 0,
-          skippedAlreadyHasPresence: 0,
-          skippedRepos: 0,
-          totalPlanningEmployees: 0,
+    if (result.createdCount > 0) {
+      try {
+        await createNotificationsForAdmins({
+          type: "absence_employe",
+          titre: "Employé marqué absent",
+          message: `${result.createdCount} absence(s) synchronisée(s) le ${result.date}.`,
         });
+      } catch (notificationError) {
+        console.error("Failed to create absence notification:", notificationError.message);
       }
-
-      const [reposRows] = await connection.query(
-        `
-          SELECT DISTINCT employe_id
-          FROM repos
-          WHERE _date = ?
-            AND employe_id IN (?)
-        `,
-        [date, planningEmployeeIds]
-      );
-      const reposEmployeeIds = new Set(
-        reposRows.map((row) => Number(row.employe_id))
-      );
-      const employeeIdsWithoutRepos = planningEmployeeIds.filter(
-        (employeId) => !reposEmployeeIds.has(employeId)
-      );
-
-      let presenceRows = [];
-
-      if (employeeIdsWithoutRepos.length > 0) {
-        const [rows] = await connection.query(
-          `
-            SELECT DISTINCT employe_id
-            FROM presence
-            WHERE _date = ?
-              AND employe_id IN (?)
-          `,
-          [date, employeeIdsWithoutRepos]
-        );
-
-        presenceRows = rows;
-      }
-
-      const presenceEmployeeIds = new Set(
-        presenceRows.map((row) => Number(row.employe_id))
-      );
-      const employeeIdsToInsert = employeeIdsWithoutRepos.filter(
-        (employeId) => !presenceEmployeeIds.has(employeId)
-      );
-
-      if (employeeIdsToInsert.length > 0) {
-        const valuesClause = employeeIdsToInsert
-          .map(() => "(?, ?, ?, ?, ?)")
-          .join(", ");
-        const queryParams = employeeIdsToInsert.flatMap((employeId) => [
-          employeId,
-          date,
-          null,
-          STATUS_ABSENT,
-          null,
-        ]);
-
-        await connection.query(
-          `
-            INSERT INTO presence (
-              employe_id,
-              _date,
-              heure_arrivee,
-              statut,
-              adresse_ip
-            )
-            VALUES ${valuesClause}
-          `,
-          queryParams
-        );
-      }
-
-      await connection.commit();
-
-      return res.json({
-        date,
-        insertedCount: employeeIdsToInsert.length,
-        skippedAlreadyHasPresence: presenceEmployeeIds.size,
-        skippedRepos: reposEmployeeIds.size,
-        totalPlanningEmployees: planningEmployeeIds.length,
-      });
-    } catch (error) {
-      await connection.rollback();
-      throw error;
-    } finally {
-      connection.release();
     }
+
+    return res.json({
+      date: result.date,
+      insertedCount: result.createdCount,
+      skippedAlreadyHasPresence: result.skippedAlreadyRegisteredCount,
+      skippedRepos: result.skippedReposCount,
+      totalPlanningEmployees: result.totalPlannedEmployees,
+    });
   } catch (error) {
+    if (error instanceof AbsenceServiceError) {
+      return res.status(error.statusCode).json({
+        message: error.message,
+      });
+    }
+
     console.error(error);
 
     return res.status(500).json({
@@ -804,6 +683,21 @@ async function updatePresence(req, res) {
 
     const updatedPresence = await findPresenceById(presenceId);
 
+    if (
+      updatedPresence.statut === STATUS_ABSENT &&
+      existingPresence.statut !== STATUS_ABSENT
+    ) {
+      try {
+        await createNotificationsForAdmins({
+          type: "absence_employe",
+          titre: "Employé marqué absent",
+          message: `${updatedPresence.prenom} ${updatedPresence.nom} a été marqué absent le ${updatedPresence.date}.`,
+        });
+      } catch (notificationError) {
+        console.error("Failed to create absence notification:", notificationError.message);
+      }
+    }
+
     return res.json({
       message: "Presence record updated successfully",
       presence: updatedPresence,
@@ -860,5 +754,4 @@ module.exports = {
   createPresence,
   updatePresence,
   deletePresence,
-  isInternalNetwork,
 };

@@ -21,10 +21,14 @@ router.get("/me/summary", getMySummary);
 router.get("/me/demandes", getMyDemandes);
 router.post("/me/demandes", createMyDemande);
 
-router.get("/admin/demandes", authorizeRoles("admin"), getAdminDemandes);
+router.get(
+  "/admin/demandes",
+  authorizeRoles("admin", "directeur"),
+  getAdminDemandes
+);
 router.get(
   "/admin/medical-deductions",
-  authorizeRoles("admin"),
+  authorizeRoles("admin", "directeur"),
   getMedicalDeductions
 );
 router.post(

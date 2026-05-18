@@ -54,24 +54,24 @@ function getTodayDateValue() {
 }
 
 function getStatusClasses(status: string) {
-  if (status === "Accept\u00e9") {
-    return "border-emerald-300/25 bg-emerald-400/10 text-emerald-100";
+  if (status === "Accepté") {
+    return "border-[var(--color-badge-success-border)] bg-[var(--color-badge-success-bg)] text-[var(--color-badge-success-text)]";
   }
 
-  if (status === "Refus\u00e9") {
-    return "border-red-300/25 bg-red-400/10 text-red-100";
+  if (status === "Refusé" || status === "Annulé") {
+    return "border-[var(--color-badge-danger-border)] bg-[var(--color-badge-danger-bg)] text-[var(--color-badge-danger-text)]";
   }
 
-  return "border-yellow-300/25 bg-yellow-400/10 text-yellow-100";
+  return "border-[var(--color-badge-warning-border)] bg-[var(--color-badge-warning-bg)] text-[var(--color-badge-warning-text)]";
 }
 
 function SummaryCard({ label, value }: { label: string; value: string }) {
   return (
-    <article className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
+    <article className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
         {label}
       </p>
-      <p className="mt-2 text-2xl font-semibold text-[#e1e3e4]">{value}</p>
+      <p className="mt-2 text-2xl font-semibold text-[var(--color-text)]">{value}</p>
     </article>
   );
 }
@@ -153,7 +153,7 @@ export default function EmployeCongesPage() {
       setErrorMessage(
         error instanceof Error
           ? error.message
-          : "Impossible de charger vos cong\u00e9s."
+          : "Impossible de charger vos congés."
       );
     } finally {
       setIsLoading(false);
@@ -193,7 +193,7 @@ export default function EmployeCongesPage() {
       });
 
       setMotif("");
-      setSuccessMessage("Demande envoy\u00e9e avec succ\u00e8s.");
+      setSuccessMessage("Demande envoyée avec succès.");
       await loadConges();
     } catch (error) {
       setErrorMessage(
@@ -208,30 +208,30 @@ export default function EmployeCongesPage() {
 
   if (!isAllowed) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#4c595f] px-6 text-[#e1e3e4]">
-        <p className="text-sm font-semibold text-[#acbdc5]">Chargement...</p>
+      <main className="flex min-h-screen items-center justify-center bg-[var(--color-bg)] px-6 text-[var(--color-text)]">
+        <p className="text-sm font-semibold text-[var(--color-text-muted)]">Chargement...</p>
       </main>
     );
   }
 
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#4c595f] text-[#e1e3e4]">
+    <main className="min-h-screen overflow-x-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
       <EmployeeNavbar user={user} onLogout={handleLogout} />
 
       <section className="mx-auto w-full max-w-[1180px] px-4 py-8 sm:px-6 lg:py-10">
         <div className="mb-6">
           <div>
-            <h1 className="text-2xl font-semibold text-[#e1e3e4] sm:text-3xl">
-              Mes cong\u00e9s
+            <h1 className="text-2xl font-semibold text-[var(--color-text)] sm:text-3xl">
+              Mes congés
             </h1>
-            <p className="mt-2 text-sm text-[#acbdc5]">
+            <p className="mt-2 text-sm text-[var(--color-text-muted)]">
               Consultation du solde et suivi des demandes.
             </p>
           </div>
         </div>
 
         {errorMessage ? (
-          <p className="mb-5 border border-red-300/30 bg-red-500/10 px-4 py-3 text-sm text-red-100">
+          <p className="mb-5 border border-[var(--color-danger-border)] bg-[var(--color-danger-bg)] px-4 py-3 text-sm text-[var(--color-danger-text)]">
             {errorMessage}
           </p>
         ) : null}
@@ -242,8 +242,8 @@ export default function EmployeCongesPage() {
         ) : null}
 
         {isLoading ? (
-          <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
-            Chargement des cong\u00e9s...
+          <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
+            Chargement des congés...
           </p>
         ) : (
           <>
@@ -253,7 +253,7 @@ export default function EmployeCongesPage() {
                 value={`${summary?.total_jours ?? 18} jours`}
               />
               <SummaryCard
-                label="Utilis\u00e9"
+                label="Utilisé"
                 value={`${summary?.jours_utilises ?? 0} jours`}
               />
               <SummaryCard
@@ -264,91 +264,91 @@ export default function EmployeCongesPage() {
 
             <form
               onSubmit={handleSubmit}
-              className="mb-8 border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4 sm:p-5"
+              className="mb-8 border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5"
             >
-              <h2 className="mb-4 text-xl font-semibold text-[#e1e3e4]">
+              <h2 className="mb-4 text-xl font-semibold text-[var(--color-text)]">
                 Nouvelle demande
               </h2>
               <div className="grid gap-4 lg:grid-cols-4">
-                <label className="flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
-                  Date d\u00e9but
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
+                  Date début
                   <input
                     type="date"
                     value={dateDebut}
                     onChange={(event) => setDateDebut(event.target.value)}
                     required
-                    className="h-10 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                    className="h-10 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                   />
                 </label>
-                <label className="flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
                   Date fin
                   <input
                     type="date"
                     value={dateFin}
                     onChange={(event) => setDateFin(event.target.value)}
                     required
-                    className="h-10 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                    className="h-10 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                   />
                 </label>
-                <label className="flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
-                  Type cong\u00e9
+                <label className="flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
+                  Type congé
                   <select
                     value={typeConge}
                     onChange={(event) => setTypeConge(event.target.value)}
-                    className="h-10 border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                    className="h-10 border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                   >
                     <option value={TYPE_ANNUAL}>Annuel</option>
                     <option value={TYPE_EXCEPTIONAL}>Exceptionnel</option>
                   </select>
                 </label>
-                <div className="border border-[rgba(172,189,197,0.15)] bg-[#334149] p-3">
-                  <p className="text-xs font-semibold uppercase tracking-wide text-[#acbdc5]">
-                    Jours demand\u00e9s
+                <div className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+                    Jours demandés
                   </p>
-                  <p className="mt-1 text-lg font-semibold text-[#e1e3e4]">
+                  <p className="mt-1 text-lg font-semibold text-[var(--color-text)]">
                     {requestedDays > 0 ? requestedDays : 0}
                   </p>
                 </div>
               </div>
-              <label className="mt-4 flex flex-col gap-2 text-sm font-semibold text-[#acbdc5]">
+              <label className="mt-4 flex flex-col gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
                 Motif
                 <textarea
                   value={motif}
                   onChange={(event) => setMotif(event.target.value)}
                   rows={3}
-                  className="border border-[rgba(172,189,197,0.15)] bg-[#334149] px-3 py-2 text-[#e1e3e4] outline-none focus:border-[#1AB6FF]"
+                  className="border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-2 text-[var(--color-text)] outline-none focus:border-[var(--color-accent)]"
                 />
               </label>
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="mt-4 h-10 bg-[#1AB6FF] px-5 text-sm font-bold text-white transition hover:bg-[#169CDC] disabled:cursor-not-allowed disabled:opacity-70"
+                className="mt-4 h-10 bg-[var(--color-accent)] px-5 text-sm font-bold text-white transition hover:bg-[var(--color-accent-hover)] disabled:cursor-not-allowed disabled:opacity-70"
               >
                 {isSubmitting ? "Envoi..." : "Envoyer la demande"}
               </button>
             </form>
 
             <section>
-              <h2 className="mb-4 text-xl font-semibold text-[#e1e3e4]">
+              <h2 className="mb-4 text-xl font-semibold text-[var(--color-text)]">
                 Mes demandes
               </h2>
               {demandes.length === 0 ? (
-                <p className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] px-4 py-5 text-sm text-[#acbdc5]">
-                  Aucune demande enregistr\u00e9e.
+                <p className="border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-5 text-sm text-[var(--color-text-muted)]">
+                  Aucune demande enregistrée.
                 </p>
               ) : (
                 <div className="grid gap-4 lg:grid-cols-2">
                   {demandes.map((demande) => (
                     <article
                       key={demande.id}
-                      className="border border-[rgba(172,189,197,0.15)] bg-[#38474e] p-4"
+                      className="border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
                     >
                       <div className="mb-4 flex items-start justify-between gap-3">
                         <div>
-                          <h3 className="font-semibold text-[#e1e3e4]">
+                          <h3 className="font-semibold text-[var(--color-text)]">
                             {demande.date_debut} - {demande.date_fin}
                           </h3>
-                          <p className="mt-1 text-sm text-[#acbdc5]">
+                          <p className="mt-1 text-sm text-[var(--color-text-muted)]">
                             {demande.nombre_jours} jour(s) - {demande.type_conge}
                           </p>
                         </div>
@@ -356,14 +356,14 @@ export default function EmployeCongesPage() {
                           {demande.statut}
                         </span>
                       </div>
-                      <p className="text-sm text-[#acbdc5]">
+                      <p className="text-sm text-[var(--color-text-muted)]">
                         Motif: {demande.motif || "-"}
                       </p>
-                      <p className="mt-2 text-sm text-[#acbdc5]">
+                      <p className="mt-2 text-sm text-[var(--color-text-muted)]">
                         Commentaire admin: {demande.commentaire_admin || "-"}
                       </p>
-                      <p className="mt-2 text-xs text-[#acbdc5]">
-                        D\u00e9cision: {demande.decided_at || "-"}
+                      <p className="mt-2 text-xs text-[var(--color-text-muted)]">
+                        Décision: {demande.decided_at || "-"}
                       </p>
                     </article>
                   ))}
