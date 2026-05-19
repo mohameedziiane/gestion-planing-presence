@@ -8,6 +8,7 @@ import { useEffect, useState } from "react";
 import ThemeToggleButton from "@/components/ThemeToggleButton";
 import UserMenu from "@/components/UserMenu";
 import NotificationBell from "@/components/NotificationBell";
+import FloatingMessages from "@/components/FloatingMessages";
 import type { StoredUser } from "@/lib/auth";
 
 type DirecteurNavbarProps = {
@@ -112,7 +113,6 @@ export default function DirecteurNavbar({ user, onLogout }: DirecteurNavbarProps
         <div className="flex items-center justify-end gap-4">
           <NotificationBell />
           <div className="flex items-center gap-2">
-          <ThemeToggleButton />
           <UserMenu
             user={user}
             displayName="Directeur"
@@ -138,7 +138,7 @@ export default function DirecteurNavbar({ user, onLogout }: DirecteurNavbarProps
                   onClick={() => setIsMobileMenuOpen(false)}
                   className={`border-l-2 px-3 py-3 text-sm font-semibold transition hover:text-[var(--color-text)] ${
                     isActive
-                      ? "border-[var(--color-accent)] bg-[var(--color-surface-muted)] text-[var(--color-text)]"
+                      ? "border-[var(--color-accent)] bg-[var(--color-surface-muted)] text-[var(--color-accent)]"
                       : "border-transparent text-[var(--color-text-muted)]"
                   }`}
                 >
@@ -146,6 +146,9 @@ export default function DirecteurNavbar({ user, onLogout }: DirecteurNavbarProps
                 </Link>
               );
             })}
+            <div className="border-l-2 border-transparent px-3 py-3">
+              <ThemeToggleButton />
+            </div>
           </div>
         </div>
       ) : null}
@@ -180,8 +183,10 @@ export default function DirecteurNavbar({ user, onLogout }: DirecteurNavbarProps
                   key={item.href}
                   href={item.href}
                   className={`border-b-2 px-2.5 py-2 text-sm font-semibold transition hover:text-[var(--color-text)] sm:px-3 ${
+                    item.href === "/directeur" ? "mr-3" : ""
+                  } ${
                     isActive
-                      ? "border-[var(--color-accent)] text-[var(--color-text)]"
+                      ? "border-[var(--color-accent)] text-[var(--color-accent)]"
                       : "border-transparent text-[var(--color-text-muted)]"
                   }`}
                 >
@@ -210,6 +215,7 @@ export default function DirecteurNavbar({ user, onLogout }: DirecteurNavbarProps
       </nav>
     </header>
     <div aria-hidden="true" className="h-[72px] md:h-[78px]" />
+    <FloatingMessages role="directeur" user={user} />
     </>
   );
 }

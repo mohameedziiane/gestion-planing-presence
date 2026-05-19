@@ -73,7 +73,6 @@ export default function AdminNavbar({ onLogout }: AdminNavbarProps) {
         <div className="flex items-center justify-end gap-4">
           <NotificationBell />
           <div className="flex items-center gap-2">
-          <ThemeToggleButton />
           <UserMenu
             displayName="Admin"
             role="admin"
@@ -98,7 +97,7 @@ export default function AdminNavbar({ onLogout }: AdminNavbarProps) {
                   onClick={() => setIsMobileMenuOpen(false)}
                   className={`border-l-2 px-3 py-3 text-sm font-semibold transition hover:text-[var(--color-text)] ${
                     isActive
-                      ? "border-[var(--color-accent)] bg-[var(--color-surface-muted)] text-[var(--color-text)]"
+                      ? "border-[var(--color-accent)] bg-[var(--color-surface-muted)] text-[var(--color-accent)]"
                       : "border-transparent text-[var(--color-text-muted)]"
                   }`}
                 >
@@ -106,6 +105,9 @@ export default function AdminNavbar({ onLogout }: AdminNavbarProps) {
                 </Link>
               );
             })}
+            <div className="border-l-2 border-transparent px-3 py-3">
+              <ThemeToggleButton />
+            </div>
           </div>
         </div>
       ) : null}
@@ -135,8 +137,10 @@ export default function AdminNavbar({ onLogout }: AdminNavbarProps) {
                   key={item.href}
                   href={item.href}
                   className={`border-b-2 px-2.5 py-2 text-sm font-semibold transition hover:text-[var(--color-text)] sm:px-3 ${
+                    item.href === "/admin" ? "mr-3" : ""
+                  } ${
                     isActive
-                      ? "border-[var(--color-accent)] text-[var(--color-text)]"
+                      ? "border-[var(--color-accent)] text-[var(--color-accent)]"
                       : "border-transparent text-[var(--color-text-muted)]"
                   }`}
                 >

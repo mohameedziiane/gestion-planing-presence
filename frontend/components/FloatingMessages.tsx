@@ -1,19 +1,21 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent } from "react";
+import type { ChangeEvent, FormEvent } from "react";
 
-import { ApiError, apiFetch } from "@/lib/api";
+import { API_BASE_URL, ApiError, apiFetch } from "@/lib/api";
 import { getStoredUser, type StoredUser } from "@/lib/auth";
 
 type FloatingMessagesProps = {
-  role: "admin" | "employe";
+  role: "admin" | "directeur" | "employe";
   user?: StoredUser | null;
 };
 
 type ConversationRow = {
   conversation_id?: number | null;
+  group_id?: number;
   employe_id?: number;
+  is_group?: boolean;
   nom_complet?: string;
   prenom?: string;
   nom?: string;
@@ -24,6 +26,7 @@ type ConversationRow = {
 
 type ActiveConversation = {
   id: number;
+  isGroup?: boolean;
   employe_id?: number;
   nom_complet: string;
 };
@@ -31,10 +34,18 @@ type ActiveConversation = {
 type MessageRow = {
   id: number;
   conversation_id: number;
+  is_group_message?: boolean;
   sender_user_id: number;
   contenu: string;
+  message_type?: "text" | "image" | "file" | string;
+  file_url?: string | null;
+  file_name?: string | null;
+  file_mime?: string | null;
+  file_size?: number | null;
   lu?: number | boolean;
   created_at?: string;
+  updated_at?: string;
+  deleted_at?: string | null;
   isPending?: boolean;
 };
 
@@ -164,6 +175,23 @@ function SendIcon() {
   );
 }
 
+function PaperclipIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-4 w-4"
+      fill="none"
+      stroke="currentColor"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      strokeWidth="2"
+    >
+      <path d="m21.4 11.6-8.5 8.5a6 6 0 0 1-8.5-8.5l9.2-9.2a4 4 0 0 1 5.7 5.7l-9.2 9.2a2 2 0 0 1-2.8-2.8l8.5-8.5" />
+    </svg>
+  );
+}
+
 function isMessageRead(message: MessageRow) {
   return message.lu === true || message.lu === 1;
 }
@@ -174,6 +202,55 @@ function formatUnreadCount(count: number) {
   }
 
   return String(count);
+}
+
+function resolveMessageFileUrl(fileUrl: string | null | undefined) {
+  if (!fileUrl) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(fileUrl)) {
+    return fileUrl;
+  }
+
+  return `${API_BASE_URL}${fileUrl.startsWith("/") ? fileUrl : `/${fileUrl}`}`;
+}
+
+function canEditOrDeleteMessage(message: MessageRow, currentUserId: unknown) {
+  if (
+    message.is_group_message ||
+    message.isPending ||
+    message.deleted_at ||
+    Number(message.sender_user_id) !== Number(currentUserId)
+  ) {
+    return false;
+  }
+
+  const createdAt = new Date(message.created_at || "").getTime();
+
+  return Boolean(createdAt) && Date.now() - createdAt <= 60 * 60 * 1000;
+}
+
+function canDeleteGroupMessage(message: MessageRow, role: string) {
+  return role === "admin" && Boolean(message.is_group_message) && !message.deleted_at;
+}
+
+function readFileAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+
+      reject(new Error("Impossible de lire le fichier."));
+    };
+
+    reader.onerror = () => reject(new Error("Impossible de lire le fichier."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function getReadIndicator(message: MessageRow) {
@@ -194,16 +271,26 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
   const [draft, setDraft] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [editingMessageId, setEditingMessageId] = useState<number | null>(null);
+  const [editingDraft, setEditingDraft] = useState("");
+  const [openMessageMenuId, setOpenMessageMenuId] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const longPressTimerRef = useRef<number | null>(null);
   const currentUser = user || getStoredUser();
 
-  const isAdmin = role === "admin";
-  const showList = isAdmin && !activeConversation;
+  const isManager = role === "admin" || role === "directeur";
+  const showList = !activeConversation;
 
   const sortedConversations = useMemo(
-    () =>
-      [...conversations].sort((first, second) => {
+    () => {
+      const groupRows = conversations.filter((conversation) => conversation.is_group);
+      const directRows = conversations.filter((conversation) => !conversation.is_group);
+
+      return [
+        ...groupRows,
+        ...directRows.sort((first, second) => {
         const firstTime = getLastMessageTimeValue(first);
         const secondTime = getLastMessageTimeValue(second);
 
@@ -222,7 +309,9 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
         return getConversationName(first).localeCompare(getConversationName(second), "fr", {
           sensitivity: "base",
         });
-      }),
+        }),
+      ];
+    },
     [conversations]
   );
 
@@ -311,12 +400,22 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
 
     try {
       const response = await apiFetch<{
-        conversation?: { id?: number; employe_id?: number; nom_complet?: string };
+        conversation?: {
+          id?: number;
+          employe_id?: number;
+          is_group?: boolean;
+          nom_complet?: string;
+        };
         messages?: MessageRow[];
-      }>(`/api/messages/conversations/${conversation.id}/messages`);
+      }>(
+        conversation.isGroup
+          ? "/api/messages/group/messages"
+          : `/api/messages/conversations/${conversation.id}/messages`
+      );
 
       setActiveConversation({
         ...conversation,
+        isGroup: Boolean(response.conversation?.is_group || conversation.isGroup),
         nom_complet:
           response.conversation?.nom_complet ||
           conversation.nom_complet ||
@@ -324,7 +423,7 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
       });
       setMessages(Array.isArray(response.messages) ? response.messages : []);
 
-      if (options.markAsRead !== false) {
+      if (!conversation.isGroup && options.markAsRead !== false) {
         void markConversationAsRead(conversation.id).catch(() => undefined);
       }
     } catch (error) {
@@ -371,15 +470,19 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
 
     setIsOpen(nextOpen);
 
-    if (role === "employe") {
-      await openEmployeeConversation();
-      return;
-    }
-
     await loadConversations();
   }
 
   async function handleSelectConversation(conversation: ConversationRow) {
+    if (conversation.is_group) {
+      await loadMessages({
+        id: conversation.group_id || 0,
+        isGroup: true,
+        nom_complet: getConversationName(conversation) || "Tous les employés",
+      });
+      return;
+    }
+
     const employeId = conversation.employe_id;
 
     if (!employeId) {
@@ -437,7 +540,9 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
       setDraft("");
 
       const response = await apiFetch<{ data?: MessageRow }>(
-        `/api/messages/conversations/${activeConversation.id}/messages`,
+        activeConversation.isGroup
+          ? "/api/messages/group/messages"
+          : `/api/messages/conversations/${activeConversation.id}/messages`,
         {
           method: "POST",
           body: JSON.stringify({ contenu: pendingMessage.contenu }),
@@ -450,11 +555,22 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
             message.id === pendingMessage.id ? (response.data as MessageRow) : message
           )
         );
+      } else if (activeConversation.isGroup) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === pendingMessage.id
+              ? { ...pendingMessage, isPending: false, lu: true }
+              : message
+          )
+        );
       } else {
         await loadMessages(activeConversation);
       }
 
-      await loadMessages(activeConversation, { silent: true, markAsRead: false });
+      if (!activeConversation.isGroup) {
+        await loadMessages(activeConversation, { silent: true, markAsRead: false });
+      }
+
       void loadConversations({ silent: true });
       void loadUnreadCount();
     } catch (error) {
@@ -466,6 +582,169 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
         error instanceof ApiError || error instanceof Error
           ? error.message
           : "Impossible d'envoyer le message."
+      );
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  async function sendAttachment(file: File) {
+    if (!activeConversation || activeConversation.isGroup) {
+      setErrorMessage("Les pièces jointes sont disponibles dans une conversation individuelle.");
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      setErrorMessage("Le fichier ne doit pas dépasser 8 Mo.");
+      return;
+    }
+
+    setIsSending(true);
+    setErrorMessage("");
+
+    try {
+      const fileData = await readFileAsDataUrl(file);
+      const response = await apiFetch<{ data?: MessageRow }>(
+        `/api/messages/conversations/${activeConversation.id}/attachments`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            fileData,
+            fileName: file.name,
+            mimeType: file.type || "application/octet-stream",
+          }),
+        }
+      );
+
+      if (response.data) {
+        setMessages((current) => [...current, response.data as MessageRow]);
+      } else {
+        await loadMessages(activeConversation, { silent: true, markAsRead: false });
+      }
+
+      void loadConversations({ silent: true });
+      void loadUnreadCount();
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError || error instanceof Error
+          ? error.message
+          : "Impossible d'envoyer le fichier."
+      );
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+
+    event.target.value = "";
+
+    if (!file) {
+      return;
+    }
+
+    void sendAttachment(file);
+  }
+
+  async function handleEditSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!editingMessageId || !editingDraft.trim()) {
+      return;
+    }
+
+    setIsSending(true);
+    setErrorMessage("");
+
+    try {
+      const response = await apiFetch<{ data?: MessageRow }>(
+        `/api/messages/messages/${editingMessageId}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ contenu: editingDraft.trim() }),
+        }
+      );
+
+      if (response.data) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === editingMessageId ? (response.data as MessageRow) : message
+          )
+        );
+      }
+
+      setEditingMessageId(null);
+      setEditingDraft("");
+      setOpenMessageMenuId(null);
+      void loadConversations({ silent: true });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError || error instanceof Error
+          ? error.message
+          : "Impossible de modifier le message."
+      );
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  async function handleDeleteMessage(messageId: number) {
+    setIsSending(true);
+    setErrorMessage("");
+
+    try {
+      const response = await apiFetch<{ data?: MessageRow }>(
+        `/api/messages/messages/${messageId}`,
+        { method: "DELETE" }
+      );
+
+      if (response.data) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === messageId ? (response.data as MessageRow) : message
+          )
+        );
+      }
+
+      setOpenMessageMenuId(null);
+      void loadConversations({ silent: true });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError || error instanceof Error
+          ? error.message
+          : "Impossible de supprimer le message."
+      );
+    } finally {
+      setIsSending(false);
+    }
+  }
+
+  async function handleDeleteGroupMessage(messageId: number) {
+    setIsSending(true);
+    setErrorMessage("");
+
+    try {
+      const response = await apiFetch<{ data?: MessageRow }>(
+        `/api/messages/group/messages/${messageId}`,
+        { method: "DELETE" }
+      );
+
+      if (response.data) {
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === messageId ? (response.data as MessageRow) : message
+          )
+        );
+      }
+
+      setOpenMessageMenuId(null);
+      void loadConversations({ silent: true });
+    } catch (error) {
+      setErrorMessage(
+        error instanceof ApiError || error instanceof Error
+          ? error.message
+          : "Impossible de supprimer le message."
       );
     } finally {
       setIsSending(false);
@@ -486,6 +765,28 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
     setDraft("");
   }
 
+  function clearLongPressTimer() {
+    if (longPressTimerRef.current) {
+      window.clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+  }
+
+  function handleMessagePointerDown(message: MessageRow, canManageMessage: boolean) {
+    if (
+      !canManageMessage ||
+      (typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches)
+    ) {
+      return;
+    }
+
+    clearLongPressTimer();
+    longPressTimerRef.current = window.setTimeout(() => {
+      setOpenMessageMenuId(message.id);
+      longPressTimerRef.current = null;
+    }, 550);
+  }
+
   useEffect(() => {
     if (!isOpen || !panelRef.current) {
       return;
@@ -495,16 +796,22 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
   }, [isOpen, activeConversation]);
 
   useEffect(() => {
+    return () => {
+      clearLongPressTimer();
+    };
+  }, []);
+
+  useEffect(() => {
     void loadUnreadCount();
 
     const intervalId = window.setInterval(() => {
       void loadUnreadCount();
 
-      if (isOpen && isAdmin && !activeConversation) {
+      if (isOpen && isManager && !activeConversation) {
         void loadConversations({ silent: true });
       }
 
-      if (isOpen && activeConversation) {
+      if (isOpen && activeConversation && !activeConversation.isGroup) {
         void loadMessages(activeConversation, {
           silent: true,
           markAsRead: true,
@@ -515,7 +822,7 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [activeConversation, isAdmin, isOpen]);
+  }, [activeConversation, isManager, isOpen]);
 
   return (
     <>
@@ -549,7 +856,7 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              {showList ? null : isAdmin ? (
+              {showList ? null : (
                 <button
                   type="button"
                   onClick={handleBackToList}
@@ -558,7 +865,7 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
                 >
                   <BackIcon />
                 </button>
-              ) : null}
+              )}
               <button
                 type="button"
                 aria-label="Fermer les messages"
@@ -595,7 +902,11 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
 
                     return (
                       <button
-                        key={conversation.employe_id}
+                        key={
+                          conversation.is_group
+                            ? `group-${conversation.group_id || "general"}`
+                            : conversation.employe_id
+                        }
                         type="button"
                         onClick={() => void handleSelectConversation(conversation)}
                         className="grid w-full grid-cols-[42px_minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 text-left transition hover:bg-slate-50"
@@ -640,23 +951,158 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
                   messages.map((message) => {
                     const isMine = Number(message.sender_user_id) === Number(currentUser?.id);
                     const checks = getReadIndicator(message);
+                    const canManageMessage =
+                      canEditOrDeleteMessage(message, currentUser?.id) ||
+                      canDeleteGroupMessage(message, role);
+                    const fileUrl = resolveMessageFileUrl(message.file_url);
+                    const messageType = message.message_type || "text";
+                    const isMediaMessage =
+                      !message.deleted_at &&
+                      fileUrl &&
+                      messageType !== "text";
+                    const bubbleClass = isMediaMessage
+                      ? "max-w-[78%] rounded-2xl bg-transparent text-slate-800"
+                      : `max-w-[78%] px-3.5 py-2.5 shadow-sm ${
+                          isMine
+                            ? "rounded-2xl rounded-br-md bg-[var(--color-accent)] text-white"
+                            : "rounded-2xl rounded-bl-md bg-white text-slate-800"
+                        }`;
 
                     return (
                       <div
                         key={message.id}
-                        className={`flex ${isMine ? "justify-end" : "justify-start"}`}
+                        className={`group/row flex ${isMine ? "justify-end" : "justify-start"}`}
                       >
                         <div
-                          className={`max-w-[78%] px-3.5 py-2.5 text-sm shadow-sm ${
-                            isMine
-                              ? "rounded-2xl rounded-br-md bg-[var(--color-accent)] text-white"
-                              : "rounded-2xl rounded-bl-md bg-white text-slate-800"
-                          }`}
+                          onPointerDown={() =>
+                            handleMessagePointerDown(message, canManageMessage)
+                          }
+                          onPointerUp={clearLongPressTimer}
+                          onPointerLeave={clearLongPressTimer}
+                          onPointerCancel={clearLongPressTimer}
+                          className={`group relative text-sm ${bubbleClass}`}
                         >
-                          <p className="whitespace-pre-wrap break-words">{message.contenu}</p>
+                          {canManageMessage ? (
+                            <button
+                              type="button"
+                              aria-label="Options du message"
+                              onClick={() =>
+                                setOpenMessageMenuId((current) =>
+                                  current === message.id ? null : message.id
+                                )
+                              }
+                              className={`absolute right-1.5 top-1.5 hidden h-5 w-5 items-center justify-center rounded-full text-[10px] opacity-0 transition group-hover/row:opacity-100 md:flex ${
+                                isMine
+                                  ? "bg-white/20 text-white hover:bg-white/30"
+                                  : "bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700"
+                              }`}
+                            >
+                              ˅
+                            </button>
+                          ) : null}
+
+                          {openMessageMenuId === message.id && canManageMessage ? (
+                            <div
+                              className={`absolute top-7 z-10 w-32 overflow-hidden rounded-lg bg-white text-sm text-slate-700 shadow-xl ${
+                                isMine ? "right-0" : "left-0"
+                              }`}
+                            >
+                              {messageType === "text" && !message.is_group_message ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingMessageId(message.id);
+                                    setEditingDraft(message.contenu);
+                                    setOpenMessageMenuId(null);
+                                  }}
+                                  className="block w-full px-3 py-2 text-left hover:bg-slate-100"
+                                >
+                                  Modifier
+                                </button>
+                              ) : null}
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  void (message.is_group_message
+                                    ? handleDeleteGroupMessage(message.id)
+                                    : handleDeleteMessage(message.id))
+                                }
+                                className="block w-full px-3 py-2 text-left hover:bg-slate-100"
+                              >
+                                Supprimer
+                              </button>
+                            </div>
+                          ) : null}
+
+                          {message.deleted_at ? (
+                            <p className="italic opacity-80">Message supprimé</p>
+                          ) : editingMessageId === message.id ? (
+                            <form onSubmit={handleEditSubmit} className="space-y-2">
+                              <textarea
+                                value={editingDraft}
+                                onChange={(event) => setEditingDraft(event.target.value)}
+                                className="min-h-20 w-full resize-none rounded-xl bg-white/95 px-3 py-2 text-sm text-slate-900 outline-none"
+                              />
+                              <span className="flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingMessageId(null);
+                                    setEditingDraft("");
+                                  }}
+                                  className="rounded-full bg-white/20 px-3 py-1 text-xs font-semibold"
+                                >
+                                  Annuler
+                                </button>
+                                <button
+                                  type="submit"
+                                  disabled={isSending || !editingDraft.trim()}
+                                  className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-900 disabled:opacity-50"
+                                >
+                                  Enregistrer
+                                </button>
+                              </span>
+                            </form>
+                          ) : messageType === "image" && fileUrl ? (
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="block overflow-hidden rounded-2xl bg-white p-1 shadow-sm"
+                            >
+                              <img
+                                src={fileUrl}
+                                alt={message.file_name || "Image"}
+                                className="max-h-60 rounded-xl object-contain"
+                              />
+                            </a>
+                          ) : messageType !== "text" && fileUrl ? (
+                            <a
+                              href={fileUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-2 rounded-2xl bg-white px-3 py-2 text-slate-800 shadow-sm"
+                            >
+                              <PaperclipIcon />
+                              <span className="min-w-0">
+                                <span className="block truncate font-semibold">
+                                  {message.file_name || "Fichier"}
+                                </span>
+                                {message.file_size ? (
+                                  <span className="block text-xs opacity-75">
+                                    {Math.ceil(Number(message.file_size) / 1024)} Ko
+                                  </span>
+                                ) : null}
+                              </span>
+                            </a>
+                          ) : (
+                            <p className="whitespace-pre-wrap break-words">{message.contenu}</p>
+                          )}
                           <p
                             className={`mt-1 flex items-center gap-1 text-[10px] ${
-                              isMine ? "justify-end text-white/80" : "text-slate-400"
+                              isMine && !isMediaMessage
+                                ? "justify-end text-white/80"
+                                : "justify-end text-slate-400"
                             }`}
                           >
                             <span>{formatMessageTime(message.created_at)}</span>
@@ -686,10 +1132,34 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
                 )}
               </div>
 
+              {activeConversation?.isGroup && role !== "admin" ? (
+                <p className="border-t border-slate-200 bg-white px-4 py-3 text-center text-sm font-medium text-slate-500">
+                  Seul l'administrateur peut envoyer des messages dans ce groupe.
+                </p>
+              ) : (
               <form
                 onSubmit={handleSendMessage}
                 className="flex items-end gap-2 border-t border-slate-200 bg-white p-3"
               >
+                {!activeConversation?.isGroup ? (
+                  <>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  aria-label="Joindre un fichier"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-slate-200 hover:text-slate-900"
+                >
+                  <PaperclipIcon />
+                </button>
+                  </>
+                ) : null}
                 <textarea
                   value={draft}
                   onChange={(event) => setDraft(event.target.value)}
@@ -706,6 +1176,7 @@ export default function FloatingMessages({ role, user }: FloatingMessagesProps) 
                   <SendIcon />
                 </button>
               </form>
+              )}
             </>
           )}
         </div>

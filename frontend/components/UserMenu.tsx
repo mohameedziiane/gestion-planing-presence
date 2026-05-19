@@ -281,7 +281,7 @@ export default function UserMenu({
                 onClick={() => setIsOpen(false)}
                 className="block w-full border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-left text-sm font-semibold text-[var(--color-text-muted)] transition hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)] focus:outline-none focus:ring-2 focus:ring-inset focus:ring-[var(--color-accent)]/60"
               >
-                Edit Profile
+                Modifier le profil
               </Link>
             ) : null}
 

@@ -1259,7 +1259,7 @@ function ReposPreview({ rows }: { rows: ApiRow[] }) {
 export default function AdminPlanningPage() {
   const router = useRouter();
   const [startDate, setStartDate] = useState(getCurrentWeekMonday);
-  const [overwrite, setOverwrite] = useState(true);
+  const overwrite = true;
   const [isLoading, setIsLoading] = useState(false);
   const [isExportingExcel, setIsExportingExcel] = useState(false);
   const [successMessage, setSuccessMessage] = useState("");
@@ -1276,15 +1276,6 @@ export default function AdminPlanningPage() {
     () => getCalculatedWeekNumber(startDate),
     [startDate]
   );
-  const selectedWeekDateRange = useMemo(() => {
-    const endDate = addDays(startDate, 6);
-
-    if (calculatedWeekNumber === null || !startDate || !endDate) {
-      return "-";
-    }
-
-    return `${formatDateForDisplay(startDate)} - ${formatDateForDisplay(endDate)}`;
-  }, [calculatedWeekNumber, startDate]);
   const startDateValidationMessage =
     calculatedWeekNumber === null
       ? `La date doit être à partir du ${formatDateForDisplay(
@@ -1498,7 +1489,7 @@ export default function AdminPlanningPage() {
           onSubmit={handleSubmit}
           className="mb-6 rounded border border-[var(--color-border)] bg-[var(--color-surface)] p-4 shadow-[0_16px_40px_rgba(17,24,28,0.14)] sm:p-5"
         >
-          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-stretch">
+          <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_320px] lg:items-end">
             <div className="space-y-4">
               <label className="block text-sm font-semibold text-[var(--color-text-muted)]">
                 <span className="mb-2 block text-xs uppercase tracking-wide">
@@ -1521,29 +1512,9 @@ export default function AdminPlanningPage() {
                 ) : null}
               </label>
 
-              <label className="flex items-start gap-3 rounded border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-3 text-sm font-semibold text-[var(--color-text)]">
-                <input
-                  type="checkbox"
-                  checked={overwrite}
-                  onChange={(event) => setOverwrite(event.target.checked)}
-                  className="mt-0.5 h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                />
-                <span className="leading-5">
-                  Remplacer le planning existant pour cette semaine
-                </span>
-              </label>
             </div>
 
             <div className="flex flex-col gap-4">
-              <div className="rounded border border-[var(--color-border)] border-l-[var(--color-accent)] bg-[var(--color-surface-muted)] px-4 py-4 lg:flex-1">
-                <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
-                  Semaine calculée automatiquement
-                </p>
-                <p className="mt-3 text-2xl font-semibold text-[var(--color-text)]">
-                  {selectedWeekDateRange}
-                </p>
-              </div>
-
               <button
                 type="submit"
                 disabled={isLoading || isExportingExcel || calculatedWeekNumber === null}

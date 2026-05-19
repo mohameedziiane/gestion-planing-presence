@@ -6,7 +6,6 @@ import { useEffect, useMemo, useState } from "react";
 import AdminNavbar from "@/components/AdminNavbar";
 import { API_BASE_URL, translateUserMessage } from "@/lib/api";
 
-type DayOption = "yesterday" | "today" | "tomorrow";
 type NestedRecord = Record<string, unknown>;
 type ApiRow = Record<string, unknown> & {
   id?: number | string;
@@ -14,21 +13,24 @@ type ApiRow = Record<string, unknown> & {
   periode?: string | NestedRecord;
   role_travail?: string | NestedRecord;
 };
-
-const dayOptions: { value: DayOption; label: string; offset: number }[] = [
-  { value: "yesterday", label: "Hier", offset: -1 },
-  { value: "today", label: "Aujourd'hui", offset: 0 },
-  { value: "tomorrow", label: "Demain", offset: 1 },
-];
+type DashboardOverviewPayload = {
+  planning?: unknown;
+  repos?: unknown;
+  summary?: {
+    groupe_matin?: unknown;
+    groupe_soir?: unknown;
+    employe_nuit?: unknown;
+    nombre_repos?: unknown;
+  };
+};
+type DashboardSummary = {
+  groupe_matin: string;
+  groupe_soir: string;
+  employe_nuit: string;
+  nombre_repos: number;
+};
 
 const shifts = ["Matin", "Soir", "Nuit"];
-
-function formatDateWithOffset(offset: number) {
-  const date = new Date();
-  date.setDate(date.getDate() + offset);
-
-  return formatDateValue(date);
-}
 
 function formatDateValue(date: Date) {
   const year = date.getFullYear();
@@ -272,7 +274,7 @@ function groupRowsByShift(rows: ApiRow[]) {
   }, {});
 }
 
-async function fetchProtectedRows(url: string, token: string) {
+async function fetchProtectedJson<T>(url: string, token: string) {
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -284,7 +286,34 @@ async function fetchProtectedRows(url: string, token: string) {
     throw new Error(translateUserMessage(data?.message || "Erreur lors du chargement."));
   }
 
-  return Array.isArray(data) ? data : [];
+  return data as T;
+}
+
+async function fetchProtectedRows(url: string, token: string) {
+  const data = await fetchProtectedJson<unknown>(url, token);
+
+  return Array.isArray(data) ? (data as ApiRow[]) : [];
+}
+
+function getDashboardSummary(payload: DashboardOverviewPayload): DashboardSummary {
+  const summary = payload.summary || {};
+  const reposCount = Number(summary.nombre_repos);
+
+  return {
+    groupe_matin:
+      typeof summary.groupe_matin === "string" && summary.groupe_matin.trim()
+        ? summary.groupe_matin.trim()
+        : "Aucun planning",
+    groupe_soir:
+      typeof summary.groupe_soir === "string" && summary.groupe_soir.trim()
+        ? summary.groupe_soir.trim()
+        : "Aucun planning",
+    employe_nuit:
+      typeof summary.employe_nuit === "string" && summary.employe_nuit.trim()
+        ? summary.employe_nuit.trim()
+        : "Aucun planning",
+    nombre_repos: Number.isFinite(reposCount) ? reposCount : 0,
+  };
 }
 
 function SummaryItem({
@@ -342,34 +371,25 @@ function PlanningSection({
 
 export default function AdminPage() {
   const router = useRouter();
-  const [selectedDay, setSelectedDay] = useState<DayOption>("today");
+  const [selectedDate, setSelectedDate] = useState(() => formatDateValue(new Date()));
   const [planningRows, setPlanningRows] = useState<ApiRow[]>([]);
   const [reposRows, setReposRows] = useState<ApiRow[]>([]);
   const [previousReposRows, setPreviousReposRows] = useState<ApiRow[]>([]);
   const [nextReposRows, setNextReposRows] = useState<ApiRow[]>([]);
+  const [dashboardSummary, setDashboardSummary] = useState<DashboardSummary>({
+    groupe_matin: "Aucun planning",
+    groupe_soir: "Aucun planning",
+    employe_nuit: "Aucun planning",
+    nombre_repos: 0,
+  });
   const [isLoading, setIsLoading] = useState(true);
   const [isReposOpen, setIsReposOpen] = useState(false);
   const [error, setError] = useState("");
-
-  const selectedDate = useMemo(() => {
-    const option = dayOptions.find((item) => item.value === selectedDay);
-
-    return formatDateWithOffset(option?.offset || 0);
-  }, [selectedDay]);
 
   const rowsByShift = useMemo(
     () => groupRowsByShift(planningRows),
     [planningRows]
   );
-  const morningGroup = rowsByShift.Matin[0]
-    ? getGroupName(rowsByShift.Matin[0])
-    : "Aucun";
-  const eveningGroup = rowsByShift.Soir[0]
-    ? getGroupName(rowsByShift.Soir[0])
-    : "Aucun";
-  const nightEmployee = rowsByShift.Nuit[0]
-    ? getEmployeeName(rowsByShift.Nuit[0])
-    : "Aucun";
 
   function handleLogout() {
     localStorage.removeItem("token");
@@ -396,13 +416,9 @@ export default function AdminPage() {
       try {
         const previousDate = addDaysToDate(selectedDate, -1);
         const nextDate = addDaysToDate(selectedDate, 1);
-        const [planning, repos, previousRepos, nextRepos] = await Promise.all([
-          fetchProtectedRows(
-            `${API_BASE_URL}/api/planning/date/${selectedDate}`,
-            authToken
-          ),
-          fetchProtectedRows(
-            `${API_BASE_URL}/api/repos/date/${selectedDate}`,
+        const [overview, previousRepos, nextRepos] = await Promise.all([
+          fetchProtectedJson<DashboardOverviewPayload>(
+            `${API_BASE_URL}/api/stats/overview?date=${encodeURIComponent(selectedDate)}`,
             authToken
           ),
           fetchProtectedRows(
@@ -419,16 +435,23 @@ export default function AdminPage() {
           return;
         }
 
-        setPlanningRows(planning);
-        setReposRows(repos);
+        setPlanningRows(Array.isArray(overview.planning) ? overview.planning : []);
+        setReposRows(Array.isArray(overview.repos) ? overview.repos : []);
         setPreviousReposRows(previousRepos);
         setNextReposRows(nextRepos);
+        setDashboardSummary(getDashboardSummary(overview));
       } catch (fetchError) {
         if (isActive) {
           setPlanningRows([]);
           setReposRows([]);
           setPreviousReposRows([]);
           setNextReposRows([]);
+          setDashboardSummary({
+            groupe_matin: "Aucun planning",
+            groupe_soir: "Aucun planning",
+            employe_nuit: "Aucun planning",
+            nombre_repos: 0,
+          });
           setError(
             fetchError instanceof Error
               ? fetchError.message
@@ -468,31 +491,14 @@ export default function AdminPage() {
             <label className="mb-3 flex w-fit flex-col gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
               Date
               <span className="relative inline-flex">
-                <select
-                  value={selectedDay}
-                  onChange={(event) => setSelectedDay(event.target.value as DayOption)}
-                  className="h-7 min-w-[108px] appearance-none rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface-muted)] pl-2.5 pr-7 text-xs font-medium leading-none text-[var(--color-text)] outline-none transition hover:border-[var(--color-border)] hover:bg-[var(--color-surface-muted)] focus:border-[var(--color-accent)] focus:bg-[var(--color-surface-muted)] focus:ring-1 focus:ring-[var(--color-accent)]/25"
-                >
-                  {dayOptions.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-                <span className="pointer-events-none absolute inset-y-0 right-2 flex items-center text-[var(--color-text-muted)]">
-                  <svg
-                    aria-hidden="true"
-                    viewBox="0 0 12 12"
-                    className="h-3 w-3"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="1.8"
-                  >
-                    <path d="m3 4.5 3 3 3-3" />
-                  </svg>
-                </span>
+                <input
+                  type="date"
+                  value={selectedDate}
+                  onChange={(event) =>
+                    setSelectedDate(event.target.value || formatDateValue(new Date()))
+                  }
+                  className="h-7 min-w-[136px] rounded-[3px] border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 text-xs font-medium leading-none text-[var(--color-text)] outline-none transition hover:border-[var(--color-border)] hover:bg-[var(--color-surface-muted)] focus:border-[var(--color-accent)] focus:bg-[var(--color-surface-muted)] focus:ring-1 focus:ring-[var(--color-accent)]/25"
+                />
               </span>
             </label>
 
@@ -507,10 +513,10 @@ export default function AdminPage() {
               </div>
               <div className="grid sm:grid-cols-2 lg:grid-cols-3">
                 <SummaryItem label="Date sélectionnée" value={selectedDate} />
-                <SummaryItem label="Groupe Matin" value={morningGroup} />
-                <SummaryItem label="Groupe Soir" value={eveningGroup} />
-                <SummaryItem label="Employé Nuit" value={nightEmployee} />
-                <SummaryItem label="Nombre repos" value={reposRows.length} />
+                <SummaryItem label="Groupe Matin" value={dashboardSummary.groupe_matin} />
+                <SummaryItem label="Groupe Soir" value={dashboardSummary.groupe_soir} />
+                <SummaryItem label="Employé Nuit" value={dashboardSummary.employe_nuit} />
+                <SummaryItem label="Nombre repos" value={dashboardSummary.nombre_repos} />
                 <article className="border-b border-[var(--color-border)] p-4 sm:border-r lg:border-b-0 lg:border-r-0">
                   <p className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
                     Repos

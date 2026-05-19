@@ -62,6 +62,7 @@ export default function NotificationBell() {
   const [isOpen, setIsOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationRow[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isMarkingAllRead, setIsMarkingAllRead] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !isRead(notification)).length,
@@ -100,6 +101,27 @@ export default function NotificationBell() {
       await apiFetch(`/api/notifications/${notification.id}/read`, {
         method: "PATCH",
       }).catch(() => undefined);
+    }
+  }
+
+  async function handleMarkAllAsRead() {
+    if (unreadCount === 0 || isMarkingAllRead) {
+      return;
+    }
+
+    setIsMarkingAllRead(true);
+    setNotifications((current) =>
+      current.map((notification) => ({ ...notification, lu: true }))
+    );
+
+    try {
+      await apiFetch("/api/notifications/read-all", {
+        method: "PATCH",
+      });
+    } catch {
+      void loadNotifications({ silent: true });
+    } finally {
+      setIsMarkingAllRead(false);
     }
   }
 
@@ -161,12 +183,20 @@ export default function NotificationBell() {
       </button>
 
       {isOpen ? (
-        <div className="absolute right-0 top-full z-[80] w-[min(340px,calc(100vw-24px))] pt-2">
+        <div className="fixed left-3 right-3 top-[64px] z-[80] pt-2 md:absolute md:left-auto md:right-0 md:top-full md:w-[min(340px,calc(100vw-24px))]">
           <div className="overflow-hidden border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl shadow-black/30">
-            <div className="border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3">
+            <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface-muted)] px-4 py-3">
               <p className="text-sm font-semibold text-[var(--color-text)]">
                 Notifications
               </p>
+              <button
+                type="button"
+                onClick={() => void handleMarkAllAsRead()}
+                disabled={unreadCount === 0 || isMarkingAllRead}
+                className="shrink-0 text-xs font-semibold text-[var(--color-accent)] transition hover:text-[var(--color-text)] disabled:cursor-default disabled:text-[var(--color-text-muted)]"
+              >
+                Lu tous
+              </button>
             </div>
 
             <div className="max-h-80 overflow-y-auto">

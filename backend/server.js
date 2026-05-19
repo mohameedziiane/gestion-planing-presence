@@ -50,10 +50,18 @@ if (missingEnvVars.length > 0) {
 }
 
 app.use(cors());
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "16mb" }));
 app.use(
   "/uploads/avatars",
   express.static(path.join(__dirname, "storage", "avatars"), {
+    setHeaders(res) {
+      res.setHeader("Cache-Control", "no-store");
+    },
+  })
+);
+app.use(
+  "/uploads/messages",
+  express.static(path.join(__dirname, "storage", "messages"), {
     setHeaders(res) {
       res.setHeader("Cache-Control", "no-store");
     },

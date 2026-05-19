@@ -10,6 +10,8 @@ const {
 } = require("../utils/avatarStorage");
 
 const PASSWORD_SALT_ROUNDS = 10;
+const TURNSTILE_VERIFY_URL =
+  "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 const userSelectQuery = `
   SELECT
@@ -76,9 +78,64 @@ function isBcryptHash(value) {
   return /^\$2[aby]\$/.test(value);
 }
 
+async function verifyTurnstileToken(turnstileToken, remoteIp) {
+  const secretKey = process.env.TURNSTILE_SECRET_KEY;
+
+  if (!secretKey || !turnstileToken) {
+    return false;
+  }
+
+  try {
+    const body = new URLSearchParams({
+      secret: secretKey,
+      response: turnstileToken,
+    });
+
+    if (remoteIp) {
+      body.set("remoteip", remoteIp);
+    }
+
+    const response = await fetch(TURNSTILE_VERIFY_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body,
+    });
+
+    if (!response.ok) {
+      return false;
+    }
+
+    const result = await response.json();
+
+    return result.success === true;
+  } catch (error) {
+    console.error("Turnstile verification failed:", error);
+    return false;
+  }
+}
+
 async function login(req, res) {
   try {
-    const { email, password } = req.body;
+    const { email, password, turnstileToken } = req.body;
+
+    if (!turnstileToken) {
+      return res.status(400).json({
+        message: "Veuillez valider le captcha.",
+      });
+    }
+
+    const isTurnstileValid = await verifyTurnstileToken(
+      String(turnstileToken),
+      req.ip
+    );
+
+    if (!isTurnstileValid) {
+      return res.status(400).json({
+        message: "Captcha invalide. Veuillez réessayer.",
+      });
+    }
 
     if (!email || !password) {
       return res.status(400).json({

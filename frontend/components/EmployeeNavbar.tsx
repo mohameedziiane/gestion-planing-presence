@@ -70,7 +70,6 @@ export default function EmployeeNavbar({ user, onLogout }: EmployeeNavbarProps) 
         <div className="flex items-center justify-end gap-4">
           <NotificationBell />
           <div className="flex items-center gap-2">
-          <ThemeToggleButton />
           <UserMenu
             user={user}
             onLogout={onLogout}
@@ -94,7 +93,7 @@ export default function EmployeeNavbar({ user, onLogout }: EmployeeNavbarProps) 
                   onClick={() => setIsMobileMenuOpen(false)}
                   className={`border-l-2 px-3 py-3 text-sm font-semibold transition hover:text-[var(--color-text)] ${
                     isActive
-                      ? "border-[var(--color-accent)] bg-[var(--color-surface-muted)] text-[var(--color-text)]"
+                      ? "border-[var(--color-accent)] bg-[var(--color-surface-muted)] text-[var(--color-accent)]"
                       : "border-transparent text-[var(--color-text-muted)]"
                   }`}
                 >
@@ -102,6 +101,9 @@ export default function EmployeeNavbar({ user, onLogout }: EmployeeNavbarProps) 
                 </Link>
               );
             })}
+            <div className="border-l-2 border-transparent px-3 py-3">
+              <ThemeToggleButton />
+            </div>
           </div>
         </div>
       ) : null}
@@ -131,8 +133,10 @@ export default function EmployeeNavbar({ user, onLogout }: EmployeeNavbarProps) 
                   key={item.href}
                   href={item.href}
                   className={`border-b-2 px-2.5 py-2 text-sm font-semibold transition sm:px-3 ${
+                    item.href === "/employe" ? "mr-3" : ""
+                  } ${
                     isActive
-                      ? "border-[var(--color-accent)] text-[var(--color-text)]"
+                      ? "border-[var(--color-accent)] text-[var(--color-accent)]"
                       : "border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
                   }`}
                 >
